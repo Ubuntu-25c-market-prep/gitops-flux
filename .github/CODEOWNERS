@@ -1,2 +1,32 @@
-# Flux desired state for platform apps.
-*            @Ubuntu-25c-market-prep/flux @Ubuntu-25c-market-prep/cto
+# Everything Flux reconciles into the cluster.
+#
+# Delivery objects belong to @flux; component configuration belongs to the
+# workstream that runs the component. Six workstreams share this repository
+# without merge contention because none of them touch the same directories.
+#
+# Absorbed platform-addons, platform-observability and platform-security per
+# ADR 0010. Path ownership is carried over unchanged from those repositories.
+
+# Flux delivery objects - HelmReleases, Kustomizations, sources, bootstrap.
+/clusters/                     @Ubuntu-25c-market-prep/flux
+
+# Add-on configuration.
+/addons/core/                  @Ubuntu-25c-market-prep/infra
+/addons/scaling/               @Ubuntu-25c-market-prep/scaling
+/addons/utils/                 @Ubuntu-25c-market-prep/utils
+/addons/velero/                @Ubuntu-25c-market-prep/velero
+/addons/rancher/               @Ubuntu-25c-market-prep/rancher
+/addons/istio/                 @Ubuntu-25c-market-prep/istio
+
+# Observability.
+/observability/monitoring/     @Ubuntu-25c-market-prep/monitoring
+/observability/logging/        @Ubuntu-25c-market-prep/logging
+/observability/tracing/        @Ubuntu-25c-market-prep/tracing
+/observability/finops/         @Ubuntu-25c-market-prep/finops
+
+# Policy and Zero Trust.
+/security/kyverno/             @Ubuntu-25c-market-prep/security
+/security/policy-reporter/     @Ubuntu-25c-market-prep/security
+/security/zerotrust/           @Ubuntu-25c-market-prep/zerotrust
+
+*                              @Ubuntu-25c-market-prep/flux @Ubuntu-25c-market-prep/cto
