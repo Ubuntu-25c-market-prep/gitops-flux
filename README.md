@@ -7,8 +7,12 @@ live in `gitops-argocd`.
 **Owners:** `@flux` for `clusters/`, the owning workstream for every other path —
 see `.github/CODEOWNERS` · **Waves:** 2–7
 
-Absorbed `platform-addons`, `platform-observability` and `platform-security` per
+Absorbed `platform-addons` and `platform-observability` per
 [ADR 0010](https://github.com/Ubuntu-25c-market-prep/ops-program/blob/main/docs/adr/0010-one-repository-per-delivery-boundary.md).
+Security policy is **not** here — it lives in
+[`platform-security`](https://github.com/Ubuntu-25c-market-prep/platform-security) per
+[ADR 0011](https://github.com/Ubuntu-25c-market-prep/ops-program/blob/main/docs/adr/0011-carve-platform-security-back-out.md),
+and this repository reconciles it from a second `GitRepository` source.
 
 ## The boundary
 
@@ -39,12 +43,18 @@ clusters/
         ├── 20-scaling/       Karpenter, KEDA
         ├── 30-mesh/          Istio, Kiali
         ├── 40-observability/ Prometheus, EFK, OTel, Kubecost
-        └── 50-ops/           Velero, Rancher
+        ├── 50-ops/           Velero, Rancher
+        └── 60-security/      Kyverno, Policy Reporter, mTLS
+                              (content from the platform-security repo)
 
 addons/                       Helm values and overlays        → addons/README.md
 observability/                Metrics, logs, traces, FinOps   → observability/README.md
-security/                     Kyverno, Policy Reporter, mTLS  → security/README.md
 ```
+
+The Flux objects under `60-security/` live here because every delivery object does,
+but what they reconcile comes from `platform-security` through its own
+`GitRepository` in `sources/`. That source needs an explicit `dependsOn` so policy
+does not race the add-ons it governs.
 
 Numeric prefixes under `infrastructure/` encode the **dependency order**, which
 is real: cert-manager must exist before Istio can have a gateway certificate, and
@@ -56,8 +66,9 @@ Prometheus must exist before Kiali has anything to query. Each directory is a
 The merge did not collapse the two halves — it moved them into one repository.
 
 ```
-addons/ · observability/ · security/   →  clusters/platform/  →  cluster
-            values                          HelmRelease           running
+addons/ · observability/               →  clusters/platform/  →  cluster
+platform-security (separate repo)         HelmRelease           running
+            values
 ```
 
 Values are owned by the workstream that runs the component; the Flux objects that
@@ -68,8 +79,9 @@ never be merged without the `HelmRelease` that consumes it.
 
 ## Adding an add-on
 
-1. Create the component directory under `addons/`, `observability/` or
-   `security/` with `values.yaml` and per-environment overlays.
+1. Create the component directory under `addons/` or `observability/` with
+   `values.yaml` and per-environment overlays. Admission policy and mesh identity
+   go in `platform-security` instead.
 2. Add a `CODEOWNERS` entry for the path in the same pull request.
 3. Add the `HelmRelease` to the right numbered directory under
    `clusters/platform/infrastructure/`. Set `dependsOn` explicitly — do not rely
