@@ -1,0 +1,7 @@
+# gitops-flux/infrastructures/base/000-helm-repository
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: flux-system
+
+resources:
+  - sealed-secrets.yaml
