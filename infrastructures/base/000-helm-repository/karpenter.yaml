@@ -1,0 +1,10 @@
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: karpenter
+  namespace: flux-system
+spec:
+  # Karpenter ships as an OCI Helm chart on public ECR, not a classic index.
+  type: oci
+  interval: 24h
+  url: oci://public.ecr.aws/karpenter
