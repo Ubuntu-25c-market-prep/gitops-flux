@@ -1,0 +1,21 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: karpenter
+  namespace: flux-system
+spec:
+  values:
+    # Dev sizing: one controller replica is enough here (chart default is 2).
+    replicas: 1
+    # Keep the controller off nodes Karpenter itself manages, and give it the
+    # scheduling priority a cluster-critical component needs.
+    priorityClassName: system-cluster-critical
+    controller:
+      resources:
+        requests:
+          cpu: 200m
+          memory: 512Mi
+        limits:
+          memory: 1Gi
+    podLabels:
+      environment: dev
