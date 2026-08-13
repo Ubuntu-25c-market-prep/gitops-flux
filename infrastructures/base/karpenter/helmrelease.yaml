@@ -40,6 +40,14 @@ spec:
       valuesKey: values.yaml
       optional: false
   values:
+    # Pin the ServiceAccount name. Flux composes the Helm release name as
+    # <targetNamespace>-<name> ("karpenter-karpenter") because releaseName is
+    # unset, and the chart derives the SA name from that fullname. The IRSA
+    # trust policy (infra-aws) only allows subject
+    # system:serviceaccount:karpenter:karpenter, so without this the pod's SA
+    # is "karpenter-karpenter" and AssumeRoleWithWebIdentity is AccessDenied.
+    serviceAccount:
+      name: karpenter
     # Cluster name and interruption queue name are both "u25c-shared" - not
     # account-identifying, safe to commit. Environment-specific tuning
     # (replicas, resources) is layered in the dev overlay's patch.
