@@ -211,6 +211,29 @@ The controller's private key lives in the `sealed-secrets-key` secret in the `se
 
 ---
 
+## Working with Istio
+
+`istiod` is installed **revisioned** (`revision: 1-30-3`), not with the default/unrevisioned tag. That makes injection opt-in by construction — no namespace gets a sidecar unless it explicitly asks for this revision.
+
+To enroll a namespace:
+
+```bash
+kubectl label namespace app-storefront istio.io/rev=1-30-3
+```
+
+Pods created *after* the label is applied get a sidecar. Existing pods in a newly-labeled namespace do not — restart them (`kubectl rollout restart deployment/...`) to pick it up.
+
+Do **not** use the older `istio-injection=enabled` label — that opts into whichever revision is marked default, and this install deliberately has no default revision. Labeling a namespace `istio-injection=enabled` here does nothing; you will not get an error, you will just not get a sidecar, which is a confusing way to lose an afternoon.
+
+```bash
+# Verify: after restarting workloads, every pod should show 2/2 (app + istio-proxy)
+kubectl -n app-storefront get pods
+```
+
+When a second revision exists (`gitops-flux#29`, the upgrade rehearsal), moving a namespace between revisions is the same command with the new revision's label value — Istio does not support two `istio.io/rev` labels on one namespace at once.
+
+---
+
 ## Notes
 
 - **Sync latency.** The `infrastructure` Kustomization runs on a 20h interval, so a commit may take up to 20 hours to land on its own. Use `flux reconcile` when you need it now, or lower the interval in `clusters/dev/25c-shared/infrastructures.yaml`.
