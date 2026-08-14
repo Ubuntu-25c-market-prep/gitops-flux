@@ -1,0 +1,29 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: eck-operator
+  namespace: flux-system
+spec:
+  chart:
+    spec:
+      chart: eck-operator
+      version: "3.5.0"
+      sourceRef:
+        kind: HelmRepository
+        name: elastic
+        namespace: flux-system
+  interval: 20h0m0s
+  # Pods run in platform-logging (created by 000-cluster-wide-resources);
+  # the HelmRelease object stays in flux-system. Same shape as cert-manager.
+  targetNamespace: platform-logging
+  # Without this Flux composes the release name as
+  # "platform-logging-eck-operator" and every rendered resource inherits the
+  # doubled prefix - same choice cert-manager and istiod made.
+  releaseName: eck-operator
+  values:
+    # Deliberately NOT cluster-wide: the operator reconciles Elasticsearch/
+    # Kibana objects only in platform-logging, and the chart shrinks its RBAC
+    # from ClusterRoles to per-namespace Roles accordingly. Widen the list if
+    # another workstream ever runs its own Elastic stack.
+    managedNamespaces:
+      - platform-logging
