@@ -10,3 +10,4 @@ resources:
   - cert-manager.yaml
   - kiali.yaml
   - prometheus-community.yaml
+  - eks-charts.yaml
