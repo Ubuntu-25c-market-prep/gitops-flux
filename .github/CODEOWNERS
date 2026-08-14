@@ -1,0 +1,37 @@
+# Everything Flux reconciles into the cluster.
+#
+# Delivery objects belong to @flux; component configuration belongs to the
+# workstream that runs the component. The workstreams share this repository
+# without merge contention because none of them touch the same directories.
+#
+# Restored after commit a772c0f9 deleted this file, and remapped onto the
+# layout that commit introduced: component config now lives under
+# /infrastructures/base/<component>/ (definitions) and
+# /infrastructures/dev/<cluster>/<component>/ (per-cluster overlays).
+# Ownership follows the component, not the tree.
+
+# Flux delivery objects - bootstrap, sources, cluster Kustomizations.
+/clusters/                                                   @Ubuntu-25c-market-prep/flux
+/infrastructures/base/000-helm-repository/                   @Ubuntu-25c-market-prep/flux
+/infrastructures/dev/25c-shared/flux-system/                 @Ubuntu-25c-market-prep/flux
+/infrastructures/dev/25c-shared/000-cluster-wide-resources/  @Ubuntu-25c-market-prep/flux
+
+# Utils - sealed-secrets, cert-manager.
+/infrastructures/base/sealed-secrets/                        @Ubuntu-25c-market-prep/utils
+/infrastructures/dev/25c-shared/sealed-secrets/              @Ubuntu-25c-market-prep/utils
+/infrastructures/base/cert-manager/                          @Ubuntu-25c-market-prep/utils
+/infrastructures/dev/25c-shared/cert-manager/                @Ubuntu-25c-market-prep/utils
+
+# Scaling - karpenter.
+/infrastructures/base/karpenter/                             @Ubuntu-25c-market-prep/scaling
+/infrastructures/dev/25c-shared/karpenter/                   @Ubuntu-25c-market-prep/scaling
+
+# Mesh - istio.
+/infrastructures/base/istio-base/                            @Ubuntu-25c-market-prep/istio
+/infrastructures/base/istiod/                                @Ubuntu-25c-market-prep/istio
+/infrastructures/base/istio-gateway/                         @Ubuntu-25c-market-prep/istio
+/infrastructures/dev/25c-shared/istio-base/                  @Ubuntu-25c-market-prep/istio
+/infrastructures/dev/25c-shared/istiod/                      @Ubuntu-25c-market-prep/istio
+/infrastructures/dev/25c-shared/istio-gateway/               @Ubuntu-25c-market-prep/istio
+
+*                                                            @Ubuntu-25c-market-prep/flux @Ubuntu-25c-market-prep/cto
