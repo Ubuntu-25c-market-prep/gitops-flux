@@ -1,0 +1,64 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: aws-vpc-cni
+  namespace: flux-system
+spec:
+  chart:
+    spec:
+      chart: aws-vpc-cni
+      # appVersion v1.22.3 - the CNI version already running. Pinned to what is
+      # in the cluster, not to latest: this release ADOPTS an existing DaemonSet
+      # (previously an EKS managed add-on), and a version bump would turn a
+      # silent ownership change into a rolling restart of pod networking.
+      version: "1.22.3"
+      sourceRef:
+        kind: HelmRepository
+        name: eks-charts
+        namespace: flux-system
+  interval: 20h0m0s
+  targetNamespace: kube-system
+  # Both explicit, and both load-bearing: they must equal the
+  # meta.helm.sh/release-name and release-namespace annotations written onto the
+  # existing objects, or Helm refuses to adopt them with "invalid ownership
+  # metadata". storageNamespace is stated rather than defaulted because Flux's
+  # default has already changed once - older releases in this cluster store in
+  # the target namespace, newer ones in flux-system.
+  releaseName: aws-vpc-cni
+  storageNamespace: kube-system
+  values:
+    # Keep the DaemonSet's ORIGINAL selector, {k8s-app: aws-node}, instead of
+    # the chart's {app.kubernetes.io/name, app.kubernetes.io/instance}.
+    # spec.selector is immutable: without this the API server rejects the
+    # update outright with "field is immutable" and the HelmRelease never
+    # becomes Ready. The chart provides this flag precisely for adopting a
+    # DaemonSet that EKS created.
+    originalMatchLabels: true
+    # EKS-distribution images from AWS's regional ECR. The chart defaults to
+    # region us-west-2 and plain upstream tags; the cluster runs the
+    # -eksbuild.N builds out of us-east-1. Leaving the defaults would rewrite
+    # every image in the DaemonSet and restart the CNI on every node.
+    image:
+      region: us-east-1
+      tag: v1.22.3-eksbuild.1
+    init:
+      image:
+        region: us-east-1
+        tag: v1.22.3-eksbuild.1
+    nodeAgent:
+      image:
+        region: us-east-1
+        tag: v1.3.7-eksbuild.1
+      resources:
+        requests:
+          cpu: 25m
+          memory: 64Mi
+    env:
+      # Was cluster_addon_config in infra-aws eks/config.yaml. The chart
+      # defaults to DEBUG, which is a lot of log volume per node for no
+      # routine benefit.
+      AWS_VPC_K8S_CNI_LOGLEVEL: INFO
+    resources:
+      requests:
+        cpu: 25m
+        memory: 64Mi
