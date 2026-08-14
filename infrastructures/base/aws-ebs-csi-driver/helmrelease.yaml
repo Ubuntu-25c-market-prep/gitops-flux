@@ -15,21 +15,10 @@ spec:
         name: aws-ebs-csi-driver
         namespace: flux-system
   interval: 20h0m0s
-  # SUSPENDED ON PURPOSE - do not remove in this PR.
-  #
-  # Three objects this chart renders (Deployment/ebs-csi-controller,
-  # DaemonSet/ebs-csi-node, DaemonSet/ebs-csi-node-windows) already exist with a
-  # different spec.selector, and spec.selector is immutable. Installing now
-  # fails with "field is immutable" and leaves a failed release behind.
-  #
-  # They have to be deleted first, inside a scheduled window. Merging this PR is
-  # therefore safe and changes nothing in the cluster: Flux creates the
-  # HelmRelease object and installs nothing.
-  #
-  # A follow-up PR removes this line during the window, after the three objects
-  # are deleted. `flux resume` alone is not enough - Git says suspended, so the
-  # next reconcile would suspend it again.
-  suspend: true
+  # Was suspended while the three immutable-selector objects
+  # (Deployment/ebs-csi-controller, DaemonSet/ebs-csi-node,
+  # DaemonSet/ebs-csi-node-windows) were deleted and recreated - see #87. Now
+  # unsuspended so Git matches the running cluster.
   targetNamespace: kube-system
   releaseName: aws-ebs-csi-driver
   storageNamespace: kube-system
