@@ -223,7 +223,9 @@ kubectl label namespace app-storefront istio.io/rev=1-30-3
 
 Pods created *after* the label is applied get a sidecar. Existing pods in a newly-labeled namespace do not — restart them (`kubectl rollout restart deployment/...`) to pick it up.
 
-Do **not** use the older `istio-injection=enabled` label — that opts into whichever revision is marked default, and this install deliberately has no default revision. Labeling a namespace `istio-injection=enabled` here does nothing; you will not get an error, you will just not get a sidecar, which is a confusing way to lose an afternoon.
+`revisionTags: [default]` tags `1-30-3` as the default revision — not to make the older `istio-injection=enabled` label the recommended path, but because `istiod`'s chart always creates `istiod-default-validator`, a `ValidatingWebhookConfiguration` for `Gateway`/`VirtualService`/etc admission that expects a plain `istiod` Service to exist. With no revision tagged `default`, that Service never gets created and **every** such object fails admission outright (`failurePolicy: Fail`): `service "istiod" not found`. This is standard practice for a single-revision install, not a workaround.
+
+Side effect: `istio-injection=enabled` now works too, resolving to whichever revision is tagged `default`. Prefer `istio.io/rev=1-30-3` anyway — it's explicit about which revision a namespace is pinned to, which matters once `gitops-flux#29`'s second revision exists and `istio-injection=enabled` could silently follow the tag to either one.
 
 ```bash
 # Verify: after restarting workloads, every pod should show 2/2 (app + istio-proxy)
