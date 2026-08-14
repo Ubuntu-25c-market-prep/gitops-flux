@@ -1,0 +1,19 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: istio-base
+  namespace: flux-system
+spec:
+  values:
+    # The chart's own default for this is the literal string "default", a
+    # magic keyword meaning "target the plain unrevisioned istiod Service"
+    # (see istiod-default-validator's template:
+    #   {{ if eq .Values.defaultRevision "default" }} name: istiod
+    #   {{ else }} name: istiod-{{ .Values.defaultRevision }} {{ end }}
+    # ). There is no unrevisioned install here, so left alone this blocks
+    # ALL Gateway/VirtualService/etc admission cluster-wide with
+    # `service "istiod" not found`. The real revision name targets
+    # istiod-1-30-3 instead, which exists. See the README's "Working with
+    # Istio" section - confirmed via `kubectl apply --dry-run=server`
+    # before this was committed, not assumed.
+    defaultRevision: "1-30-3"

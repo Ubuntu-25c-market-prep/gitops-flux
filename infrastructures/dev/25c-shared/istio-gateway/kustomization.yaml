@@ -3,13 +3,7 @@ kind: Kustomization
 resources:
   - ../../../base/istio-gateway
   - sealed-tls-cert.yaml
-  # gateway.yaml temporarily pulled out - its dry-run failure was blocking
-  # this entire Kustomization's single apply batch, including the #78 fix
-  # meant to unblock it (istiod's revisionTags never landed on the server
-  # despite the PR being merged - confirmed via
-  # `kubectl -n flux-system get helmrelease istiod -o jsonpath=...`). Re-add
-  # once istiod-default-validator resolves cleanly.
-  # - gateway.yaml
+  - gateway.yaml
 patches:
   - path: patch.yaml
     target:
