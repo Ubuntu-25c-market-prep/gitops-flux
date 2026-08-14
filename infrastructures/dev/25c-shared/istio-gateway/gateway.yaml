@@ -1,0 +1,31 @@
+# Istio's own Gateway CRD (from istio-base), not Kubernetes Gateway API -
+# see the epic's own naming ("Gateway and VirtualService conventions") and
+# the course's later exercises (fault injection, circuit breaking, mTLS,
+# AuthorizationPolicy), none of which exist in Gateway API.
+#
+# No VirtualService yet - a Gateway with nothing attached is a legitimate,
+# verifiable state: it accepts the TLS handshake and returns Istio's default
+# 404 for any unmatched host. Real routing arrives with the Phase 3 demo
+# app, which is what actually has something to route to.
+apiVersion: networking.istio.io/v1
+kind: Gateway
+metadata:
+  name: ingressgateway
+  namespace: platform-istio
+spec:
+  selector:
+    # Matches the istio/gateway chart's pod labels for releaseName:
+    # istio-ingressgateway - confirmed via `helm template`, not assumed.
+    istio: istio-ingressgateway
+  servers:
+    - port:
+        number: 443
+        name: https
+        protocol: HTTPS
+      tls:
+        mode: SIMPLE
+        credentialName: istio-ingressgateway-cert
+      hosts:
+        - "*.25c-team1.art"
+        - "*.nip.io"
+        - "localhost"
