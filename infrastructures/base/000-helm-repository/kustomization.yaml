@@ -9,3 +9,4 @@ resources:
   - istio.yaml
   - cert-manager.yaml
   - kiali.yaml
+  - prometheus-community.yaml
