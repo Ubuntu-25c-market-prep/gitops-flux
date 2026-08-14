@@ -1,0 +1,10 @@
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: cert-manager
+  namespace: flux-system
+spec:
+  # Jetstack publishes cert-manager as a classic (index.yaml) Helm repo,
+  # not OCI - so no `type:` field, unlike karpenter.yaml.
+  interval: 24h
+  url: https://charts.jetstack.io
