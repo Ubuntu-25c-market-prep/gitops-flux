@@ -10,20 +10,6 @@ spec:
     # retrofitting a revision after the fact means reinstalling rather than
     # adding a revision.
     revision: "1-30-3"
-    # The chart always creates istiod-default-validator, a
-    # ValidatingWebhookConfiguration pointing at a plain "istiod" Service -
-    # separate from the correctly-revisioned istio-validator-1-30-3-...
-    # webhook. With no revision tagged "default", that Service never gets
-    # created, so EVERY Gateway/VirtualService/etc admission fails outright
-    # (failurePolicy: Fail): "service istiod not found". revisionTags
-    # creates the alias. Standard practice for a single-revision install,
-    # not a workaround - see #25's PR discussion for how this was found.
-    #
-    # Side effect: this also revives the old istio-injection=enabled label
-    # (it resolves to whichever revision is tagged "default"), correcting
-    # the #26 README note that it does nothing here.
-    revisionTags:
-      - default
     pilot:
       # Chart default is sized for hundreds of proxies across a large mesh.
       # This cluster is 2x t3.medium; see the istio epic's capacity notes
