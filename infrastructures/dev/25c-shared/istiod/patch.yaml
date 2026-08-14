@@ -1,0 +1,23 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: istiod
+  namespace: flux-system
+spec:
+  values:
+    # Revisioned install from day one - gitops-flux#29 (upgrade rehearsal)
+    # needs a second control plane to install alongside this one later, and
+    # retrofitting a revision after the fact means reinstalling rather than
+    # adding a revision.
+    revision: "1-30-3"
+    pilot:
+      # Chart default is sized for hundreds of proxies across a large mesh.
+      # This cluster is 2x t3.medium; see the istio epic's capacity notes
+      # (ops-program#21) for the full budget across every component landing
+      # on it.
+      resources:
+        requests:
+          cpu: 100m
+          memory: 512Mi
+        limits:
+          memory: 1Gi

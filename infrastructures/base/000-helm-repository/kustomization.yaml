@@ -6,3 +6,4 @@ namespace: flux-system
 resources:
   - sealed-secrets.yaml
   - karpenter.yaml
+  - istio.yaml
