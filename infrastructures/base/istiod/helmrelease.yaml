@@ -26,3 +26,10 @@ spec:
   dependsOn:
     - name: istio-base
       namespace: flux-system
+  values:
+    # Must match istio-base's global.istioNamespace exactly - istiod uses
+    # this to find its own webhook/CRD configuration, not just to locate
+    # itself. Every future Istio component (gateway, Kiali) needs the same
+    # value.
+    global:
+      istioNamespace: platform-istio

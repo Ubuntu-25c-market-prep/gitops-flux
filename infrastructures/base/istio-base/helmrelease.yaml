@@ -19,3 +19,12 @@ spec:
   releaseName: istio-base
   install:
     createNamespace: true
+  values:
+    # targetNamespace alone does NOT relocate Istio - the chart has its own
+    # separate global.istioNamespace (default "istio-system") controlling
+    # where ClusterRoleBinding subjects and other cluster-scoped bindings
+    # point, independent of Release.Namespace. Without this, install fails
+    # outright: "namespaces \"istio-system\" not found". Every Istio
+    # component (istiod, gateway, Kiali) must set this to the same value.
+    global:
+      istioNamespace: platform-istio
