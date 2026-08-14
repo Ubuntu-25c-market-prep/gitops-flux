@@ -14,9 +14,14 @@ metadata:
   namespace: platform-istio
 spec:
   selector:
-    # Matches the istio/gateway chart's pod labels for releaseName:
-    # istio-ingressgateway - confirmed via `helm template`, not assumed.
-    istio: istio-ingressgateway
+    # The chart strips the "istio-" prefix from the release name for this
+    # label - releaseName istio-ingressgateway produces istio: ingressgateway,
+    # not istio: istio-ingressgateway. An earlier `helm template` check used
+    # a placeholder release name ("test") that has no prefix to strip, which
+    # hid this - confirmed against the actual deployed pod's live labels
+    # (`kubectl get pod --show-labels`) and re-verified via `helm template`
+    # with the real release name, not a stand-in.
+    istio: ingressgateway
   servers:
     - port:
         number: 443
