@@ -8,3 +8,4 @@ resources:
   - karpenter.yaml
   - istio.yaml
   - cert-manager.yaml
+  - kiali.yaml

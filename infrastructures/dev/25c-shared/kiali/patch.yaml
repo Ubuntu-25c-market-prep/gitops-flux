@@ -1,0 +1,25 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: kiali
+  namespace: flux-system
+spec:
+  values:
+    external_services:
+      prometheus:
+        # TEMPORARY: no platform-wide Prometheus exists yet
+        # (monitoring epic, Wave 5). Points at a personal lab install
+        # (kadze/lab-tools) instead of the team's own - unlike the earlier
+        # cert-manager collision, this is a deliberate, explicit reference,
+        # not two controllers fighting over one object name. But it is a
+        # real dependency: deleting that lab (kubectl delete -f bootstrap/)
+        # breaks Kiali's metrics until it's recreated or Wave 5 lands.
+        # Repoint to the real platform Prometheus service the day it ships
+        # - do not leave this as-is past that point.
+        url: "http://kube-prometheus-stack-prometheus.lab-observability.svc.cluster.local:9090"
+    auth:
+      # Not exposed outside the cluster - no VirtualService routes to this
+      # yet, only reachable via `kubectl port-forward`. Revisit before ever
+      # exposing it through the ingress gateway; anonymous + a public route
+      # means anyone with the URL gets full read access to the mesh.
+      strategy: "anonymous"
