@@ -21,3 +21,14 @@ spec:
           memory: 512Mi
         limits:
           memory: 1Gi
+    meshConfig:
+      # Nodes span us-east-1a and us-east-1b - cross-AZ traffic is billed at
+      # $0.02/GB round trip and compounds quietly, unlike a one-time cost.
+      # This alone is enough: locality is read automatically from each
+      # node's topology.kubernetes.io/zone label, and with no explicit
+      # distribute/failover policy Istio's default is "prefer same zone,
+      # spill to another zone only when the local one has no healthy
+      # endpoint" - exactly the behavior that contains cost without
+      # sacrificing availability if a zone empties out.
+      localityLbSetting:
+        enabled: true
