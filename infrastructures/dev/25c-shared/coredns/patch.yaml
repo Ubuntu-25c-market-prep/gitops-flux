@@ -1,0 +1,20 @@
+# Dev sizing. These are the values the EKS managed add-on was configured with in
+# infra-aws eks/config.yaml (cluster_addon_config.coredns) before the handover;
+# they must keep matching what is running or applying this rolls DNS.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: coredns
+  namespace: kube-system
+spec:
+  replicas: 2
+  template:
+    spec:
+      containers:
+        - name: coredns
+          resources:
+            requests:
+              cpu: 100m
+              memory: 70Mi
+            limits:
+              memory: 170Mi

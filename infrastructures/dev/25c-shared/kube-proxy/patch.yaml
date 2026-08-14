@@ -1,0 +1,16 @@
+# Dev sizing, carried over from infra-aws eks/config.yaml
+# (cluster_addon_config.kube-proxy). Must match what is running.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: kube-proxy
+  namespace: kube-system
+spec:
+  template:
+    spec:
+      containers:
+        - name: kube-proxy
+          resources:
+            requests:
+              cpu: 25m
+              memory: 64Mi
