@@ -26,6 +26,10 @@
 /infrastructures/base/karpenter/                             @Ubuntu-25c-market-prep/scaling
 /infrastructures/dev/25c-shared/karpenter/                   @Ubuntu-25c-market-prep/scaling
 
+# Logging - EFK stack (ECK operator now; Elasticsearch, Fluent Bit, Kibana follow).
+/infrastructures/base/eck-operator/                          @Ubuntu-25c-market-prep/logging
+/infrastructures/dev/25c-shared/eck-operator/                @Ubuntu-25c-market-prep/logging
+
 # Mesh - istio.
 /infrastructures/base/istio-base/                            @Ubuntu-25c-market-prep/istio
 /infrastructures/base/istiod/                                @Ubuntu-25c-market-prep/istio
