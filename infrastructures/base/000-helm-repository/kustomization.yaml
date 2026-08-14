@@ -11,3 +11,4 @@ resources:
   - kiali.yaml
   - prometheus-community.yaml
   - eks-charts.yaml
+  - aws-ebs-csi-driver.yaml
