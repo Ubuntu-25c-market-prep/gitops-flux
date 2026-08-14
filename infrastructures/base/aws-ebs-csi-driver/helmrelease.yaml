@@ -1,0 +1,94 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: aws-ebs-csi-driver
+  namespace: flux-system
+spec:
+  chart:
+    spec:
+      chart: aws-ebs-csi-driver
+      # Chart 2.63.1 == appVersion 1.63.1, the driver already running. Pinned
+      # for the same reason as aws-vpc-cni: this adopts existing objects.
+      version: "2.63.1"
+      sourceRef:
+        kind: HelmRepository
+        name: aws-ebs-csi-driver
+        namespace: flux-system
+  interval: 20h0m0s
+  # SUSPENDED ON PURPOSE - do not remove in this PR.
+  #
+  # Three objects this chart renders (Deployment/ebs-csi-controller,
+  # DaemonSet/ebs-csi-node, DaemonSet/ebs-csi-node-windows) already exist with a
+  # different spec.selector, and spec.selector is immutable. Installing now
+  # fails with "field is immutable" and leaves a failed release behind.
+  #
+  # They have to be deleted first, inside a scheduled window. Merging this PR is
+  # therefore safe and changes nothing in the cluster: Flux creates the
+  # HelmRelease object and installs nothing.
+  #
+  # A follow-up PR removes this line during the window, after the three objects
+  # are deleted. `flux resume` alone is not enough - Git says suspended, so the
+  # next reconcile would suspend it again.
+  suspend: true
+  targetNamespace: kube-system
+  releaseName: aws-ebs-csi-driver
+  storageNamespace: kube-system
+  # The IRSA role ARN embeds the AWS account id and this repo is public, so it
+  # is NOT committed. Supplied by an out-of-band ConfigMap, the same pattern
+  # karpenter uses:
+  #
+  #   ARN=$(terraform -chdir=infra-aws/eks output -raw ebs_csi_irsa_role_arn)
+  #   kubectl create configmap ebs-csi-irsa -n flux-system \
+  #     --from-literal=values.yaml="controller:
+  #     serviceAccount:
+  #       annotations:
+  #         eks.amazonaws.com/role-arn: ${ARN}"
+  valuesFrom:
+    - kind: ConfigMap
+      name: ebs-csi-irsa
+      valuesKey: values.yaml
+      optional: false
+  values:
+    # EKS-distribution images. The chart defaults to public.ecr.aws upstream
+    # builds; the cluster runs AWS's eksbuild images from the regional ECR.
+    image:
+      repository: 602401143452.dkr.ecr.us-east-1.amazonaws.com/eks/aws-ebs-csi-driver
+      tag: v1.63.1
+    sidecars:
+      provisioner:
+        image:
+          repository: 602401143452.dkr.ecr.us-east-1.amazonaws.com/eks/csi-provisioner
+          tag: v6.3.0-eksbuild.3
+      attacher:
+        image:
+          repository: 602401143452.dkr.ecr.us-east-1.amazonaws.com/eks/csi-attacher
+          tag: v4.12.0-eksbuild.4
+      snapshotter:
+        # The chart leaves this sidecar OFF by default, but the running
+        # controller has it. Without forceEnable, adopting would delete the
+        # csi-snapshotter container - restarting the controller and removing
+        # VolumeSnapshot support.
+        forceEnable: true
+        image:
+          repository: 602401143452.dkr.ecr.us-east-1.amazonaws.com/eks/csi-snapshotter
+          tag: v8.6.0-eksbuild.4
+      resizer:
+        image:
+          repository: 602401143452.dkr.ecr.us-east-1.amazonaws.com/eks/csi-resizer
+          tag: v2.2.1-eksbuild.2
+      livenessProbe:
+        image:
+          repository: 602401143452.dkr.ecr.us-east-1.amazonaws.com/eks/livenessprobe
+          tag: v2.19.0-eksbuild.4
+      nodeDriverRegistrar:
+        image:
+          repository: 602401143452.dkr.ecr.us-east-1.amazonaws.com/eks/csi-node-driver-registrar
+          tag: v2.17.0-eksbuild.4
+    controller:
+      # Pinned, not left to the chart's fullname template: the IRSA trust
+      # policy in infra-aws is scoped to subject
+      # system:serviceaccount:kube-system:ebs-csi-controller-sa. A different
+      # name means AssumeRoleWithWebIdentity is AccessDenied and no volume can
+      # be provisioned.
+      serviceAccount:
+        name: ebs-csi-controller-sa
