@@ -1,0 +1,17 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: istio-gateway
+  namespace: flux-system
+spec:
+  values:
+    service:
+      annotations:
+        # No AWS Load Balancer Controller installed - this cluster relies on
+        # the legacy in-tree cloud provider EKS's managed control plane runs.
+        # That provider still recognises this annotation directly, no addon
+        # needed. Public subnets are already tagged kubernetes.io/role/elb=1
+        # in both AZs, so auto-discovery just works - no explicit subnet
+        # list required. AWS-only assumption, which is exactly why it lives
+        # here and not in base/.
+        service.beta.kubernetes.io/aws-load-balancer-type: "nlb"

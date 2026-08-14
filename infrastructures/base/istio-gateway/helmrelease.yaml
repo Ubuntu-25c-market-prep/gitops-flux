@@ -1,0 +1,33 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: istio-gateway
+  namespace: flux-system
+spec:
+  chart:
+    spec:
+      chart: gateway
+      version: "1.30.3"
+      sourceRef:
+        kind: HelmRepository
+        name: istio
+        namespace: flux-system
+  interval: 1h0m0s
+  targetNamespace: platform-istio
+  releaseName: istio-ingressgateway
+  install:
+    createNamespace: true
+  # Gateway pods are injected by istiod at admission time (inject.istio.io/
+  # templates: gateway, set by the chart's own podAnnotations) - if istiod
+  # isn't up yet, or its revisioned webhook doesn't exist, the pods still
+  # get created but without the proxy that actually makes them a gateway.
+  dependsOn:
+    - name: istiod
+      namespace: flux-system
+  values:
+    # Must match istiod's revision and istio-base/istiod's
+    # global.istioNamespace exactly, or this gateway attaches to no control
+    # plane at all - see the lesson from #24 in the repo README.
+    revision: "1-30-3"
+    global:
+      istioNamespace: platform-istio
