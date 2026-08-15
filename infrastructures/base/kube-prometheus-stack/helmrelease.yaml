@@ -6,6 +6,7 @@ metadata:
 spec:
   chart:
     spec:
+      timeout: 15m
       chart: kube-prometheus-stack
       version: "72.6.2"
       sourceRef:
