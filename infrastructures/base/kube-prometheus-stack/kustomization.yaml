@@ -3,3 +3,5 @@ kind: Kustomization
 resources:
   - helmrelease.yaml
   - thanos/objstore-secret.yaml
+  - dashboards/platform-overview.yaml
+  - dashboards/monitoring-workstream.yaml

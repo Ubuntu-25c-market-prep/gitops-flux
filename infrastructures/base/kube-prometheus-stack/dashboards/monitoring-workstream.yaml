@@ -1,0 +1,105 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-monitoring-workstream
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  monitoring-workstream.json: |
+    {
+      "annotations": { "list": [] },
+      "title": "Monitoring Workstream",
+      "uid": "monitoring-workstream",
+      "version": 1,
+      "timezone": "browser",
+      "refresh": "30s",
+      "time": { "from": "now-1h", "to": "now" },
+      "panels": [
+        {
+          "title": "Prometheus Uptime",
+          "type": "stat",
+          "gridPos": { "h": 6, "w": 6, "x": 0, "y": 0 },
+          "targets": [{
+            "expr": "up{job=\"prometheus-kube-prometheus-prometheus\"}",
+            "legendFormat": "Prometheus"
+          }],
+          "fieldConfig": {
+            "defaults": {
+              "mappings": [
+                { "type": "value", "options": { "0": { "text": "DOWN", "color": "red" }, "1": { "text": "UP", "color": "green" } } }
+              ]
+            }
+          }
+        },
+        {
+          "title": "Grafana Uptime",
+          "type": "stat",
+          "gridPos": { "h": 6, "w": 6, "x": 6, "y": 0 },
+          "targets": [{
+            "expr": "up{job=\"monitoring-kube-prometheus-stack-grafana\"}",
+            "legendFormat": "Grafana"
+          }]
+        },
+        {
+          "title": "Alertmanager Uptime",
+          "type": "stat",
+          "gridPos": { "h": 6, "w": 6, "x": 12, "y": 0 },
+          "targets": [{
+            "expr": "up{job=\"prometheus-kube-prometheus-alertmanager\"}",
+            "legendFormat": "Alertmanager"
+          }]
+        },
+        {
+          "title": "Active Alerts",
+          "type": "stat",
+          "gridPos": { "h": 6, "w": 6, "x": 18, "y": 0 },
+          "targets": [{
+            "expr": "count(ALERTS{alertstate=\"firing\"})",
+            "legendFormat": "Firing"
+          }]
+        },
+        {
+          "title": "Prometheus Memory Usage",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+          "targets": [{
+            "expr": "container_memory_working_set_bytes{namespace=\"monitoring\", container=\"prometheus\"}",
+            "legendFormat": "Prometheus"
+          }],
+          "fieldConfig": { "defaults": { "unit": "bytes" } }
+        },
+        {
+          "title": "Prometheus CPU Usage",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+          "targets": [{
+            "expr": "rate(container_cpu_usage_seconds_total{namespace=\"monitoring\", container=\"prometheus\"}[5m])",
+            "legendFormat": "Prometheus"
+          }],
+          "fieldConfig": { "defaults": { "unit": "short" } }
+        },
+        {
+          "title": "Prometheus TSDB Size",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 14 },
+          "targets": [{
+            "expr": "prometheus_tsdb_storage_blocks_bytes",
+            "legendFormat": "TSDB Size"
+          }],
+          "fieldConfig": { "defaults": { "unit": "bytes" } }
+        },
+        {
+          "title": "Scrape Duration by Job",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 14 },
+          "targets": [{
+            "expr": "scrape_duration_seconds",
+            "legendFormat": "{{job}}"
+          }],
+          "fieldConfig": { "defaults": { "unit": "s" } }
+        }
+      ],
+      "schemaVersion": 39,
+      "templating": { "list": [] }
+    }
