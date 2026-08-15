@@ -27,6 +27,13 @@ spec:
     prometheus:
       prometheusSpec:
         retention: 15d
+        thanos:
+          objectStorageConfig:
+            name: thanos-objstore-secret
+            key: objstore.yml
+      serviceAccount:
+        annotations:
+          eks.amazonaws.com/role-arn: ${THANOS_ROLE_ARN}
         storageSpec:
           volumeClaimTemplate:
             spec:
