@@ -5,3 +5,5 @@ resources:
   - thanos/objstore-secret.yaml
   - dashboards/platform-overview.yaml
   - dashboards/monitoring-workstream.yaml
+  - alerts/platform-alerts.yaml
+  - alerts/monitoring-workstream-alerts.yaml
