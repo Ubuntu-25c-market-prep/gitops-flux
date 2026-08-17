@@ -11,12 +11,13 @@ data:
       "annotations": { "list": [] },
       "title": "Monitoring Workstream",
       "uid": "monitoring-workstream",
-      "version": 1,
+      "version": 2,
       "timezone": "browser",
       "refresh": "30s",
       "time": { "from": "now-1h", "to": "now" },
       "panels": [
         {
+          "id": 1,
           "title": "Prometheus Uptime",
           "type": "stat",
           "gridPos": { "h": 6, "w": 6, "x": 0, "y": 0 },
@@ -33,33 +34,51 @@ data:
           }
         },
         {
+          "id": 2,
           "title": "Grafana Uptime",
           "type": "stat",
           "gridPos": { "h": 6, "w": 6, "x": 6, "y": 0 },
           "targets": [{
             "expr": "up{job=\"monitoring-kube-prometheus-stack-grafana\"}",
             "legendFormat": "Grafana"
-          }]
+          }],
+          "fieldConfig": {
+            "defaults": {
+              "mappings": [
+                { "type": "value", "options": { "0": { "text": "DOWN", "color": "red" }, "1": { "text": "UP", "color": "green" } } }
+              ]
+            }
+          }
         },
         {
+          "id": 3,
           "title": "Alertmanager Uptime",
           "type": "stat",
           "gridPos": { "h": 6, "w": 6, "x": 12, "y": 0 },
           "targets": [{
             "expr": "up{job=\"monitoring-kube-prometheus-alertmanager\"}",
             "legendFormat": "Alertmanager"
-          }]
+          }],
+          "fieldConfig": {
+            "defaults": {
+              "mappings": [
+                { "type": "value", "options": { "0": { "text": "DOWN", "color": "red" }, "1": { "text": "UP", "color": "green" } } }
+              ]
+            }
+          }
         },
         {
+          "id": 4,
           "title": "Active Alerts",
           "type": "stat",
           "gridPos": { "h": 6, "w": 6, "x": 18, "y": 0 },
           "targets": [{
-            "expr": "count(ALERTS{alertstate=\"firing\"})",
+            "expr": "count(ALERTS{alertstate=\"firing\", alertname!=\"Watchdog\"}) or vector(0)",
             "legendFormat": "Firing"
           }]
         },
         {
+          "id": 5,
           "title": "Prometheus Memory Usage",
           "type": "timeseries",
           "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
@@ -70,6 +89,7 @@ data:
           "fieldConfig": { "defaults": { "unit": "bytes" } }
         },
         {
+          "id": 6,
           "title": "Prometheus CPU Usage",
           "type": "timeseries",
           "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
@@ -80,21 +100,23 @@ data:
           "fieldConfig": { "defaults": { "unit": "short" } }
         },
         {
+          "id": 7,
           "title": "Prometheus TSDB Size",
           "type": "timeseries",
           "gridPos": { "h": 8, "w": 12, "x": 0, "y": 14 },
           "targets": [{
-            "expr": "prometheus_tsdb_storage_blocks_bytes",
+            "expr": "prometheus_tsdb_storage_blocks_bytes{job=\"monitoring-kube-prometheus-prometheus\"}",
             "legendFormat": "TSDB Size"
           }],
           "fieldConfig": { "defaults": { "unit": "bytes" } }
         },
         {
+          "id": 8,
           "title": "Scrape Duration by Job",
           "type": "timeseries",
           "gridPos": { "h": 8, "w": 12, "x": 12, "y": 14 },
           "targets": [{
-            "expr": "scrape_duration_seconds",
+            "expr": "avg(scrape_duration_seconds) by (job)",
             "legendFormat": "{{job}}"
           }],
           "fieldConfig": { "defaults": { "unit": "s" } }
