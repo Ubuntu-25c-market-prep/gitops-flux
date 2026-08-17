@@ -4,9 +4,9 @@ metadata:
   name: kube-prometheus-stack
   namespace: flux-system
 spec:
+  timeout: 15m
   chart:
     spec:
-      timeout: 15m
       chart: kube-prometheus-stack
       version: "72.6.2"
       sourceRef:
@@ -32,9 +32,6 @@ spec:
           objectStorageConfig:
             name: thanos-objstore-secret
             key: objstore.yml
-      serviceAccount:
-        annotations:
-          eks.amazonaws.com/role-arn: ${THANOS_ROLE_ARN}
         storageSpec:
           volumeClaimTemplate:
             spec:
@@ -46,6 +43,9 @@ spec:
         serviceMonitorSelectorNilUsesHelmValues: false
         podMonitorSelectorNilUsesHelmValues: false
         ruleSelectorNilUsesHelmValues: false
+      serviceAccount:
+        annotations:
+          eks.amazonaws.com/role-arn: ${THANOS_ROLE_ARN}
     grafana:
       persistence:
         enabled: true
