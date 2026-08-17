@@ -1,0 +1,12 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: teleport
+  namespace: flux-system
+spec:
+  values:
+    # Dev is the only cluster today, so this overlay is deliberately thin. When
+    # a second environment exists, the values that differ per environment -
+    # clusterName, volumeSize, and eventually chartMode - belong here rather
+    # than in base.
+    clusterName: u25c-shared-dev.teleport.local
