@@ -53,3 +53,64 @@ spec:
               resources:
                 requests:
                   storage: 2Gi
+      config:
+        route:
+          receiver: default
+          group_by: ['alertname', 'namespace', 'workstream']
+          group_wait: 30s
+          group_interval: 5m
+          repeat_interval: 4h
+          routes:
+            - match:
+                workstream: monitoring
+              receiver: monitoring-team
+            - match:
+                workstream: istio
+              receiver: istio-team
+            - match:
+                workstream: scaling
+              receiver: scaling-team
+            - match:
+                workstream: security
+              receiver: security-team
+        receivers:
+          - name: default
+            email_configs:
+              - to: 'aslantishbek97+u25c-ElenaPinar@gmail.com'
+                from: 'alertmanager@u25c.dev'
+                smarthost: 'smtp.gmail.com:587'
+                auth_username: 'alertmanager@u25c.dev'
+                auth_password: 'PLACEHOLDER'
+                send_resolved: true
+          - name: monitoring-team
+            email_configs:
+              - to: 'aslantishbek97+u25c-tatinatech@gmail.com,aslantishbek97+u25c-katoteshiku1989@gmail.com,aslantishbek97+u25c-romanhumeniuk312@gmail.com'
+                from: 'alertmanager@u25c.dev'
+                smarthost: 'smtp.gmail.com:587'
+                auth_username: 'alertmanager@u25c.dev'
+                auth_password: 'PLACEHOLDER'
+                send_resolved: true
+          - name: istio-team
+            email_configs:
+              - to: 'aslantishbek97+u25c-sevgiabaysal@gmail.com,aslantishbek97+u25c-kadze@gmail.com,aslantishbek97+u25c-cristianarseni@gmail.com,aslantishbek97+u25c-zhemaitite-anastasiia@gmail.com'
+                from: 'alertmanager@u25c.dev'
+                smarthost: 'smtp.gmail.com:587'
+                auth_username: 'alertmanager@u25c.dev'
+                auth_password: 'PLACEHOLDER'
+                send_resolved: true
+          - name: scaling-team
+            email_configs:
+              - to: 'aslantishbek97+u25c-sergiidan@gmail.com,aslantishbek97+u25c-bloomingirl@gmail.com,aslantishbek97+u25c-Drdmytrush90@gmail.com'
+                from: 'alertmanager@u25c.dev'
+                smarthost: 'smtp.gmail.com:587'
+                auth_username: 'alertmanager@u25c.dev'
+                auth_password: 'PLACEHOLDER'
+                send_resolved: true
+          - name: security-team
+            email_configs:
+              - to: 'aslantishbek97+u25c-katoteshiku1989@gmail.com,aslantishbek97+u25c-romanhumeniuk312@gmail.com,aslantishbek97+u25c-cristianarseni@gmail.com'
+                from: 'alertmanager@u25c.dev'
+                smarthost: 'smtp.gmail.com:587'
+                auth_username: 'alertmanager@u25c.dev'
+                auth_password: 'PLACEHOLDER'
+                send_resolved: true

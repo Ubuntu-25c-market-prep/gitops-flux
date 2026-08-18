@@ -1,0 +1,73 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: monitoring-workstream-alerts
+  namespace: monitoring
+  labels:
+    release: kube-prometheus-stack
+    workstream: monitoring
+spec:
+  groups:
+    - name: monitoring.components
+      rules:
+        - alert: PrometheusDown
+          expr: up{job="monitoring-kube-prometheus-prometheus"} == 0
+          for: 5m
+          labels:
+            severity: critical
+            workstream: monitoring
+          annotations:
+            summary: "Prometheus is down"
+            description: "Prometheus has been unreachable for 5 minutes. No metrics are being collected."
+
+        - alert: GrafanaDown
+          expr: up{job="monitoring-kube-prometheus-stack-grafana"} == 0
+          for: 5m
+          labels:
+            severity: warning
+            workstream: monitoring
+          annotations:
+            summary: "Grafana is down"
+            description: "Grafana has been unreachable for 5 minutes. Dashboards are unavailable."
+
+        - alert: AlertmanagerDown
+          expr: up{job="monitoring-kube-prometheus-alertmanager"} == 0
+          for: 5m
+          labels:
+            severity: critical
+            workstream: monitoring
+          annotations:
+            summary: "Alertmanager is down"
+            description: "Alertmanager has been unreachable for 5 minutes. Alert notifications will not be delivered."
+
+    - name: monitoring.prometheus
+      rules:
+        - alert: PrometheusHighMemory
+          expr: container_memory_working_set_bytes{namespace="monitoring", container="prometheus"} / on() kube_pod_container_resource_limits{namespace="monitoring", container="prometheus", resource="memory"} * 100 > 80
+          for: 15m
+          labels:
+            severity: warning
+            workstream: monitoring
+          annotations:
+            summary: "Prometheus using over 80% of its memory limit"
+            description: "If it hits the limit, Kubernetes will OOM-kill it and you lose in-memory data."
+
+        - alert: PrometheusTSDBFull
+          expr: (kubelet_volume_stats_used_bytes{namespace="monitoring", persistentvolumeclaim=~"prometheus-.*"} / kubelet_volume_stats_capacity_bytes{namespace="monitoring", persistentvolumeclaim=~"prometheus-.*"}) * 100 > 80
+          for: 10m
+          labels:
+            severity: warning
+            workstream: monitoring
+          annotations:
+            summary: "Prometheus disk above 80%"
+            description: "Thanos may not be offloading fast enough, or retention is too long."
+
+        - alert: PrometheusRuleFailures
+          expr: rate(prometheus_rule_evaluation_failures_total[5m]) > 0
+          for: 15m
+          labels:
+            severity: warning
+            workstream: monitoring
+          annotations:
+            summary: "Prometheus rule evaluation failures"
+            description: "Some alert or recording rules are failing. Check for bad PromQL queries."
