@@ -6,3 +6,4 @@ resources:
   - karpenter.yaml
   - cert-manager.yaml
   - monitoring.yaml
+  - keda.yaml
