@@ -58,6 +58,26 @@ spec:
       # defaults to DEBUG, which is a lot of log volume per node for no
       # routine benefit.
       AWS_VPC_K8S_CNI_LOGLEVEL: INFO
+      # Assign /28 prefixes to each ENI instead of individual secondary IPs.
+      #
+      # Without this a node's pod ceiling is ENIs x (IPs_per_ENI - 1) + 2, which
+      # on the t3.medium node group is 17 - and both nodes hit it while sitting
+      # at ~60% CPU and ~70% memory. Pod slots, not compute, are what this
+      # cluster runs out of: KEDA's operator and admission webhook are Pending
+      # with "Too many pods" right now. Prefix delegation raises the ceiling to
+      # the EKS-recommended 110 on the same instances, at no extra cost.
+      #
+      # Requires Nitro instances (t3 qualifies) and CNI >= 1.9 (running 1.22.3).
+      #
+      # ORDERING: this must be live on every aws-node pod BEFORE any node boots
+      # with a raised --max-pods (infra-aws modules/eks/launch-tl.tf). A node
+      # that advertises 110 slots while the CNI can still only hand out 17 IPs
+      # leaves pods stuck in ContainerCreating with IP allocation failures.
+      ENABLE_PREFIX_DELEGATION: "true"
+      # Keep one spare prefix warm per node so a burst of pods does not wait on
+      # an EC2 AssignPrivateIpAddresses call. This is already the running value;
+      # stated explicitly because Helm owns this env block after adoption.
+      WARM_PREFIX_TARGET: "1"
     resources:
       requests:
         cpu: 25m
