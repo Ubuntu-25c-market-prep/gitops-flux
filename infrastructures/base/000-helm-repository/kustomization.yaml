@@ -12,4 +12,5 @@ resources:
   - prometheus-community.yaml
   - eks-charts.yaml
   - aws-ebs-csi-driver.yaml
+  - keda.yaml
   - teleport.yaml
