@@ -2,8 +2,17 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
+  # Platform namespaces - one Namespace object each.
   - sealed-secrets.yaml
   - karpenter.yaml
   - cert-manager.yaml
   - monitoring.yaml
   - teleport.yaml
+
+  # Business application environments (gitops-flux#8). Each file carries its
+  # Namespace, its ResourceQuota and its LimitRange, because they are one
+  # decision. Argo CD deploys into these; Flux owns the namespaces themselves
+  # (ADR 0012).
+  - app-dev.yaml
+  - app-stage.yaml
+  - app-prod.yaml
