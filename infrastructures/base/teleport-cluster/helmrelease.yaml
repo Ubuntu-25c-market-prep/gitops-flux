@@ -1,0 +1,110 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: teleport
+  namespace: flux-system
+spec:
+  interval: 20h0m0s
+  releaseName: teleport
+  targetNamespace: teleport
+  install:
+    # Namespace comes from 000-cluster-wide-resources, not the chart, so one
+    # controller owns the object.
+    createNamespace: false
+    remediation:
+      retries: 3
+    # The proxy waits on its own certificate before reporting ready. The default
+    # 5m is tight on a cold start - kube-prometheus-stack hit the same wall in #91.
+    timeout: 10m
+  upgrade:
+    remediation:
+      retries: 3
+      strategy: rollback
+    timeout: 10m
+  chart:
+    spec:
+      chart: teleport-cluster
+      version: "18.8.3"
+      sourceRef:
+        kind: HelmRepository
+        name: teleport
+        namespace: flux-system
+  values:
+    # Open-source build. Community Edition is licensed for companies under 100
+    # employees and under $10M annual revenue - confirmed applicable. AGPL v3.
+    # See ADR 00NN.
+    enterprise: false
+
+    # Placeholder name. This becomes teleport.25c-team1.art when the utils epic
+    # lands external-dns and the Route 53 DNS-01 issuer (Wave 3). Changing
+    # clusterName later re-issues host certificates, so treat the swap as a
+    # deliberate migration rather than an edit.
+    clusterName: u25c-shared.teleport.local
+
+    # Makes this control plane also serve the cluster it runs in, so no separate
+    # teleport-kube-agent is needed. The agent chart is for joining ADDITIONAL
+    # clusters to an existing control plane - one cluster, one HelmRelease.
+    kubeClusterName: u25c-shared
+
+    # No SSO in Community Edition, so local users with mandatory second factor.
+    # This is the compensating control for the missing Identity Center
+    # integration, not a convenience setting - do not relax it.
+    authentication:
+      type: local
+      localAuth: true
+      secondFactors: ["otp", "webauthn"]
+
+    # standalone: single replica, SQLite on a PersistentVolume.
+    #
+    # The alternative is `aws` mode - DynamoDB for state, S3 for recordings -
+    # which is what this should become if Teleport outlives evaluation. That
+    # needs new Terraform in infra-aws and an IRSA role, and belongs in its own
+    # PR.
+    #
+    # standalone means one pod, one volume. Losing the volume loses the user
+    # database and every recorded session. Acceptable while proving the thing
+    # works; say so out loud rather than letting it become permanent by inertia.
+    chartMode: standalone
+
+    persistence:
+      enabled: true
+      # EBS CSI is deployed. Confirm the class name with `kubectl get storageclass`
+      # before merging - a wrong name leaves the pod Pending with no obvious error.
+      storageClassName: ebs-csi-default-sc
+      volumeSize: 10Gi
+
+    # NOT exposed outside the cluster. Reachable only via
+    #   kubectl port-forward -n teleport svc/teleport 8443:443
+    #
+    # Same call as Kiali, and for the same reason: the Gateway and VirtualService
+    # conventions are still unwritten, and there is no issuer yet. Both arrive
+    # with the utils epic (cert-manager Route 53 DNS-01 issuer, external-dns,
+    # wildcard cert for *.25c-team1.art). At that point this becomes
+    # service.type LoadBalancer plus the external-dns hostname annotation and a
+    # ClusterIssuer reference - a second PR, not this one.
+    #
+    # An access proxy on a public route with a self-signed certificate is worse
+    # than no access proxy at all. Do not flip this without the issuer.
+    service:
+      type: ClusterIP
+
+    # Self-signed until the issuer exists. Let's Encrypt cannot validate a name
+    # that does not resolve publicly.
+    acme: false
+
+    # Single listener multiplexing web and tunnel traffic - simplest thing that
+    # works behind a port-forward, and what the reference install uses.
+    proxyListenerMode: multiplex
+
+    # No load balancer in front of the proxy yet. Revisit when the NLB lands:
+    # with PROXY protocol enabled upstream and "off" here, client IPs are lost.
+    proxyProtocol: "off"
+
+    # Two t3.medium nodes carry the whole platform. Unset requests let this
+    # compete with istiod and Prometheus for headroom.
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        memory: 1Gi
