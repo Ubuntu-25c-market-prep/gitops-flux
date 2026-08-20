@@ -9,6 +9,7 @@ resources:
   - monitoring.yaml
   - keda.yaml
   - teleport.yaml
+  - argocd.yaml
 
   # Business application environments (gitops-flux#8). Each file carries its
   # Namespace, its ResourceQuota and its LimitRange, because they are one

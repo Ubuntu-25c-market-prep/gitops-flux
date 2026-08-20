@@ -1,0 +1,36 @@
+# gitops-flux/infrastructures/dev/25c-shared/argo-cd
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# DELIBERATELY NO `namespace:` LINE.
+#
+# Setting it here rewrites the HelmRelease's own metadata.namespace from
+# flux-system to argocd, and that is a trap with a two-day precedent on this
+# cluster: kube-prometheus-stack's overlay does exactly that, so when
+# gitops-flux#97 added a `valuesFrom` ConfigMap reference, Flux looked for the
+# ConfigMap in `monitoring` while the instructions said `flux-system`. The
+# release sat at Ready=False/ValuesError and monitoring was frozen until someone
+# noticed which namespace the error message was actually naming.
+#
+# keda, karpenter and aws-ebs-csi-driver all leave this out and their
+# HelmReleases stay in flux-system, where `flux get helmrelease` finds them
+# without a -n flag. Argo CD does the same.
+#
+# The two objects that genuinely belong in `argocd` declare it themselves.
+# targetNamespace on the HelmRelease is what puts the WORKLOAD there.
+
+resources:
+  - ../../../base/argo-cd
+  # The GitHub OAuth client credentials. Encrypted with the cluster's
+  # sealed-secrets public key, so the plaintext never enters this public
+  # repository. See the PR for how it is produced.
+  - sealed-github-oauth.yaml
+
+patches:
+  - path: patch.yaml
+    target:
+      kind: HelmRelease
+
+labels:
+  - pairs:
+      kustomize.toolkit.fluxcd.io/prune: enabled
