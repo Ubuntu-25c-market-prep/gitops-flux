@@ -51,36 +51,52 @@ spec:
     configs:
       cm:
         # ---------------------------------------------------------------------
-        # SSO
+        # AUTHENTICATION: local admin for now, SSO later
         # ---------------------------------------------------------------------
-        # No local admin. A shared password, in an org whose repositories are all
-        # public, is a credential nobody can rotate and everybody knows.
-        admin.enabled: false
+        # The chart's built-in admin account, deliberately, as the SIMPLEST thing
+        # that works while the organisation's identity provider is undecided
+        # (ops-program#52 is open; a GitHub OAuth App may be an infra-v2
+        # decision rather than a today decision).
+        #
+        # What that costs, stated honestly: one shared account rather than named
+        # people, and an audit trail that says "admin" rather than who. Acceptable
+        # here and not acceptable forever - see the migration note below.
+        #
+        # What it does NOT cost: the password is generated in-cluster into
+        # argocd-initial-admin-secret and never enters git, and there is no
+        # ingress yet, so reaching this at all requires cluster access.
+        admin.enabled: true
 
-        # GitHub OAuth through the bundled Dex.
+        # ---------------------------------------------------------------------
+        # MIGRATING TO SSO LATER - deliberately kept to one PR
+        # ---------------------------------------------------------------------
+        # Everything needed for the switch is already in place except the
+        # connector itself. When the provider is decided:
         #
-        # The reason is mechanical rather than aesthetic: the ticket asks for
-        # "RBAC per workstream", and this org already has 18 GitHub teams whose
-        # slugs ARE the workstream names. With teamNameField: slug, the mapping
-        # below is a direct team -> role edge with nothing new to provision.
-        # Identity Center would need its own application plus a second group
-        # model duplicating teams we already maintain by hand.
+        #   1. add `dex.enabled: true` and a connectors block here, e.g. for
+        #      GitHub:
         #
-        # $argocd-github-oauth:<key> reads a Secret in this namespace labelled
-        # app.kubernetes.io/part-of: argocd. That Secret is a SealedSecret in
-        # this repository - the client secret is never in plaintext here.
-        dex.config: |
-          connectors:
-            - type: github
-              id: github
-              name: GitHub
-              config:
-                clientID: $argocd-github-oauth:clientID
-                clientSecret: $argocd-github-oauth:clientSecret
-                orgs:
-                  - name: Ubuntu-25c-market-prep
-                teamNameField: slug
-                loadAllGroups: false
+        #        dex.config: |
+        #          connectors:
+        #            - type: github
+        #              id: github
+        #              name: GitHub
+        #              config:
+        #                clientID: $argocd-github-oauth:clientID
+        #                clientSecret: $argocd-github-oauth:clientSecret
+        #                orgs: [{name: Ubuntu-25c-market-prep}]
+        #                teamNameField: slug
+        #
+        #   2. add the client secret as a strict-scoped SealedSecret labelled
+        #      app.kubernetes.io/part-of: argocd (ops-program#51)
+        #   3. flip admin.enabled to false
+        #
+        # The RBAC policy below already names GitHub teams and needs NO change:
+        # those `g,` lines simply match nothing until a connector supplies
+        # groups. Writing them now costs nothing and means the migration adds a
+        # connector rather than redesigning authorisation.
+        #
+        # No user migration either way - there are no local users beyond admin.
 
       # -----------------------------------------------------------------------
       # RBAC per workstream
@@ -93,6 +109,11 @@ spec:
       # convention - it holds even for someone who ignores the convention.
       rbac:
         create: true
+        # These `g,` lines are INERT until an SSO connector supplies groups.
+        # That is intentional: the authorisation model is decided and written
+        # down now, so enabling SSO later is a connector change rather than a
+        # design exercise. Until then the only usable account is admin, which
+        # bypasses this policy entirely.
         # Everyone in the org can look. Nobody can act without being granted it.
         policy.default: role:readonly
         policy.csv: |
@@ -135,9 +156,9 @@ spec:
         requests: {cpu: 25m, memory: 64Mi}
         limits:   {cpu: 200m, memory: 256Mi}
     dex:
-      resources:
-        requests: {cpu: 10m, memory: 32Mi}
-        limits:   {cpu: 100m, memory: 128Mi}
+      # Not running: there is no connector to serve. An idle Dex is a pod slot
+      # and a CVE surface. Enable it in the same PR that adds the connector.
+      enabled: false
     notifications:
       # Not configured, so not run. Enable it in the PR that adds a receiver,
       # not before - an idle controller is a pod slot and a CVE surface.

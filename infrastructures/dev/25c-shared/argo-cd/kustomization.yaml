@@ -21,10 +21,10 @@ kind: Kustomization
 
 resources:
   - ../../../base/argo-cd
-  # The GitHub OAuth client credentials. Encrypted with the cluster's
-  # sealed-secrets public key, so the plaintext never enters this public
-  # repository. See the PR for how it is produced.
-  - sealed-github-oauth.yaml
+  # No sealed secret yet. Argo CD runs on its built-in admin account until the
+  # organisation picks an identity provider (ops-program#52). When it does, the
+  # SealedSecret is added here and admin.enabled is flipped in base - see the
+  # migration note in base/argo-cd/helmrelease.yaml.
 
 patches:
   - path: patch.yaml
