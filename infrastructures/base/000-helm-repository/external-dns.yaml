@@ -1,0 +1,13 @@
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: external-dns
+  namespace: flux-system
+spec:
+  interval: 24h
+  # kubernetes-sigs publishes external-dns as a classic index.yaml repository
+  # (the chart tarballs are attached to GitHub releases and listed in that
+  # index). No `type: oci` - that line belongs to karpenter alone, which is
+  # published to an ECR OCI registry. Adding it here makes Flux treat the URL
+  # as an OCI reference and the HelmRepository never becomes Ready.
+  url: https://kubernetes-sigs.github.io/external-dns/

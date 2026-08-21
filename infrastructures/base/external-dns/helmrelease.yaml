@@ -1,0 +1,126 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: external-dns
+  namespace: flux-system
+spec:
+  chart:
+    spec:
+      chart: external-dns
+      # No leading "v" - the kubernetes-sigs chart versions are plain semver,
+      # unlike cert-manager's, whose chart tags carry one. Chart 1.21.1 ships
+      # external-dns 0.21.0.
+      version: "1.21.1"
+      sourceRef:
+        kind: HelmRepository
+        name: external-dns
+        namespace: flux-system
+  interval: 20h0m0s
+  # Pods run in the external-dns namespace (created by
+  # 000-cluster-wide-resources); the HelmRelease object stays in flux-system.
+  targetNamespace: external-dns
+  # Without this Flux composes the release name as <targetNamespace>-<name>
+  # ("external-dns-external-dns"), the ServiceAccount inherits that name, and
+  # the IRSA subject becomes system:serviceaccount:external-dns:external-dns-external-dns
+  # - which is not what modules/external-dns/controller.tf trusts. Same trap
+  # karpenter hit in #70 and cert-manager avoided in #75.
+  releaseName: external-dns
+  # The controller's IRSA role ARN embeds the AWS account id, and this repo is
+  # public, so it is NOT committed. It is supplied by an out-of-band ConfigMap
+  # (external-dns-irsa) in flux-system, created from the terraform output with
+  # a heredoc so the YAML indentation below is copied literally rather than
+  # reconstructed by hand:
+  #
+  # ARN=$(terraform -chdir=infra-aws/external-dns output -raw controller_role_arn)
+  #
+  # kubectl create configmap external-dns-irsa -n flux-system \
+  #   --from-literal=values.yaml="$(cat <<EOF
+  # serviceAccount:
+  #   annotations:
+  #     eks.amazonaws.com/role-arn: ${ARN}
+  # EOF
+  # )"
+  #
+  # valuesFrom merges after spec.values, so this only adds the SA annotation.
+  # optional: false on purpose - without the annotation the pod falls back to
+  # the node role and every Route 53 call fails with AccessDenied, so failing
+  # the release outright is the louder, better outcome.
+  valuesFrom:
+    - kind: ConfigMap
+      name: external-dns-irsa
+      valuesKey: values.yaml
+      optional: false
+  values:
+    # The other half of the IRSA contract: the trust policy conditions on
+    # system:serviceaccount:external-dns:external-dns, so the name is pinned
+    # here rather than left to the chart's fullname template.
+    serviceAccount:
+      create: true
+      name: external-dns
+
+    # Route 53. The chart takes provider as an object in 1.x; the bare string
+    # form still validates but the object is what the schema documents.
+    provider:
+      name: aws
+
+    # Only ever touch the platform zone. This is a client-side filter, not a
+    # permission - the IAM policy is what actually confines the controller to
+    # hostedzone/Z033052035FXAKF23D1RR. Both exist so a mistake here is a
+    # no-op rather than a cross-zone write.
+    domainFilters:
+      - 25c-team1.art
+
+    # Record types the controller publishes. Left empty the chart passes no
+    # --managed-record-types flag and external-dns defaults to A, AAAA, CNAME;
+    # stating them keeps this file honest against the IAM condition in
+    # modules/external-dns/controller.tf, which allows exactly A, AAAA, CNAME
+    # and TXT. TXT is absent here on purpose - it is the registry's own record
+    # type below, not an endpoint type, and external-dns writes it regardless.
+    managedRecordTypes:
+      - A
+      - AAAA
+      - CNAME
+
+    # Ownership registry. external-dns writes a companion TXT record for every
+    # record it creates and will only ever modify or delete records that TXT
+    # claims - this is what lets it share the zone with cert-manager's
+    # _acme-challenge.* records and with anything created by hand.
+    registry: txt
+    # Identifies this cluster in those TXT records. Must be unique per
+    # external-dns instance sharing the zone; if a second cluster or a lab
+    # install ever points here, a different id is what stops the two from
+    # fighting over the same records.
+    txtOwnerId: u25c-shared
+    # Ownership TXT records are named edns-<record> instead of <record>. Without
+    # a prefix the registry record collides with its own CNAME at the same name
+    # - DNS forbids a CNAME alongside any other record type, and ingress
+    # hostnames on AWS are CNAMEs.
+    #
+    # NEVER change this after records exist. The prefix is how external-dns
+    # finds its own registry entries; changing it orphans every one of them and
+    # the controller stops recognising records it created.
+    txtPrefix: "edns-"
+
+    # sync (not the chart default upsert-only) so a deleted Service or Ingress
+    # takes its DNS record with it. Safe only because of the TXT registry
+    # above - deletion is confined to records this instance owns. upsert-only
+    # would never delete, and the zone would silently accumulate records
+    # pointing at load balancers that no longer exist.
+    policy: sync
+
+    # Chart default, stated explicitly. The istio ingress gateway (#25) is
+    # already exposed through a Service of type LoadBalancer, so the `service`
+    # source publishes its NLB hostname as soon as that Service carries an
+    # external-dns.alpha.kubernetes.io/hostname annotation - no istio-specific
+    # source needed for it. The istio-gateway and istio-virtualservice sources
+    # would additionally let a Gateway's own `hosts` entries create records;
+    # that widens the controller's RBAC to Istio CRDs and is a call to make
+    # with the istio workstream, not a default to switch on here.
+    sources:
+      - service
+      - ingress
+
+    # How often the controller reconciles the zone against cluster state. One
+    # minute is the chart default and is the interval Route 53 API calls are
+    # billed against; the zone is small, so it stays.
+    interval: 1m

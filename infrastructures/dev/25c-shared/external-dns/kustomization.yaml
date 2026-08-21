@@ -1,0 +1,22 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# NOTE: deliberately no top-level `namespace:` here, unlike the sealed-secrets
+# overlay. That field rewrites metadata.namespace on every resource it renders,
+# which would move this HelmRelease out of flux-system. Two things break if it
+# does: Flux resolves valuesFrom ConfigMaps in the HelmRelease's own namespace,
+# so external-dns-irsa (created in flux-system) would no longer be found and the
+# release would fail on a missing ConfigMap; and the HelmRepository referenced
+# by the chart's sourceRef is likewise namespaced to flux-system. Where the pods
+# run is set by targetNamespace in the base HelmRelease, not by this file.
+resources:
+  - ../../../base/external-dns
+patches:
+  - path: patch.yaml
+    target:
+      kind: HelmRelease
+
+# Marks everything rendered here as prunable, so removing this overlay from git
+# causes Flux to garbage-collect the objects instead of orphaning them.
+labels:
+  - pairs:
+      kustomize.toolkit.fluxcd.io/prune: enabled

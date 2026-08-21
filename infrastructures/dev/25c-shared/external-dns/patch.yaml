@@ -1,0 +1,32 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: external-dns
+  namespace: flux-system
+spec:
+  values:
+    # No replicaCount here, deliberately. The chart hardcodes `replicas: 1` in
+    # its Deployment template and exposes no value for it (verified against
+    # 1.21.1); its values schema allows unknown keys, so a `replicaCount: 2`
+    # would be accepted, ignored, and leave you reading Git thinking you had
+    # two. Scaling this controller is not a values change.
+    #
+    # One replica is also the correct number: external-dns has no leader
+    # election here, so a second writer would race the first over the same
+    # Route 53 records and the same TXT registry entries.
+
+    # Dev sizing, matched to sealed-secrets and cert-manager in this overlay.
+    # A CPU request but no CPU limit on purpose: the request is what the
+    # scheduler reserves and what protects the controller under node pressure,
+    # while a CPU limit would throttle the reconcile loop for no benefit -
+    # this pod is idle between 60s syncs. The memory limit is a real ceiling,
+    # since memory is not compressible.
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        memory: 256Mi
+
+    podLabels:
+      environment: dev
