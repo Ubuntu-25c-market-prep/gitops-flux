@@ -1,0 +1,47 @@
+# gitops-flux/infrastructures/dev/25c-shared/elasticsearch/elasticsearch.yaml
+# The Elasticsearch cluster itself - an ECK custom resource, reconciled by the
+# eck-operator (which watches exactly this namespace). Lives overlay-only, not
+# in base/: node count, disk and memory are per-cluster decisions, and version
+# upgrades roll dev-first - same reasoning istio-gateway used for its Gateway.
+apiVersion: elasticsearch.k8s.elastic.co/v1
+kind: Elasticsearch
+metadata:
+  name: platform
+  namespace: platform-logging
+spec:
+  version: 9.5.2
+  nodeSets:
+    - name: default
+      # One node, all roles: this is a dev log store, not an HA search tier.
+      # Growing means raising count and adding dedicated roles here, with the
+      # cost delta stated in that PR.
+      count: 1
+      config:
+        # The stock EKS AMI ships vm.max_map_count=65530; Elasticsearch's
+        # bootstrap check demands 262144 for mmap. Disabling mmap (niofs
+        # instead) passes the check without privileged init containers or
+        # node-level sysctl tuning. Fine for dev ingest volumes; revisit
+        # before any prod-sized deployment.
+        node.store.allow_mmap: false
+      volumeClaimTemplates:
+        - metadata:
+            name: elasticsearch-data
+          spec:
+            accessModes: [ReadWriteOnce]
+            # No storageClassName: uses the cluster default (ebs-csi-default-sc,
+            # gp3, expandable) - and stays portable if the default changes.
+            resources:
+              requests:
+                storage: 30Gi
+      podTemplate:
+        spec:
+          containers:
+            - name: elasticsearch
+              resources:
+                requests:
+                  cpu: 500m
+                  memory: 2Gi
+                limits:
+                  # ECK sizes the JVM heap to half the memory limit
+                  # automatically - 2Gi limit means a 1Gi heap.
+                  memory: 2Gi
