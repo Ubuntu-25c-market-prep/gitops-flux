@@ -1,0 +1,80 @@
+# gitops-flux/infrastructures/dev/25c-shared/elasticsearch/elasticsearch.yaml
+# The Elasticsearch cluster itself - an ECK custom resource, reconciled by the
+# eck-operator (which watches exactly this namespace). Lives overlay-only, not
+# in base/: node count, disk and memory are per-cluster decisions, and version
+# upgrades roll dev-first - same reasoning istio-gateway used for its Gateway.
+apiVersion: elasticsearch.k8s.elastic.co/v1
+kind: Elasticsearch
+metadata:
+  name: platform
+  namespace: platform-logging
+spec:
+  version: 9.5.2
+  # Declared rather than inherited. ECK's own CRD documentation states the
+  # default budget "doesn't allow any Pod to be removed [...] if there is only
+  # one node of type data or master" - which is exactly this cluster. That
+  # refuses every voluntary eviction, deadlocking Karpenter consolidation and
+  # spot drain; ADR 0013 names it as the trap most likely to hurt later.
+  # maxUnavailable: 1 keeps drain working on a single-replica cluster.
+  podDisruptionBudget:
+    spec:
+      maxUnavailable: 1
+      selector:
+        matchLabels:
+          elasticsearch.k8s.elastic.co/cluster-name: platform
+  nodeSets:
+    - name: default
+      # One node, all roles: this is a dev log store, not an HA search tier.
+      # Growing means raising count and adding dedicated roles here, with the
+      # cost delta stated in that PR.
+      count: 1
+      config:
+        # The stock EKS AMI ships vm.max_map_count=65530; Elasticsearch's
+        # bootstrap check demands 262144 for mmap. Disabling mmap (niofs
+        # instead) passes the check without privileged init containers or
+        # node-level sysctl tuning. Fine for dev ingest volumes; revisit
+        # before any prod-sized deployment.
+        node.store.allow_mmap: false
+      volumeClaimTemplates:
+        - metadata:
+            name: elasticsearch-data
+          spec:
+            accessModes: [ReadWriteOnce]
+            # No storageClassName: uses the cluster default (ebs-csi-default-sc,
+            # gp3, expandable) - and stays portable if the default changes.
+            resources:
+              requests:
+                storage: 30Gi
+      podTemplate:
+        spec:
+          # Placement per ADR 0013 / ops-program docs/node-placement.md. The
+          # observability pool exists for "anything holding state on an RWO EBS
+          # volume": it consolidates WhenEmpty only, so a node is not reclaimed
+          # out from under an attached volume. Selector AND toleration are both
+          # required - the pool is tainted u25c.io/pool=observability:NoSchedule
+          # and either one alone leaves the pod Pending or lands it anywhere.
+          nodeSelector:
+            u25c.io/pool: observability
+          tolerations:
+            - key: u25c.io/pool
+              value: observability
+              effect: NoSchedule
+          # No kubernetes.io/arch pin: the pool is mixed arm64/amd64 and its
+          # cheapest instance types are Graviton (t4g/m7g), so this will very
+          # likely run on arm64. Checked 2026-08-25 - the 9.5.2 image publishes
+          # both linux/amd64 and linux/arm64, so no pin is needed.
+          #
+          # Priority: a pod without a class is priority 0 and evictable by
+          # anything that has one. On 2026-08-24 that preempted four Kyverno
+          # pods and forced an unplanned node purchase (ADR 0013).
+          priorityClassName: system-cluster-critical
+          containers:
+            - name: elasticsearch
+              resources:
+                requests:
+                  cpu: 500m
+                  memory: 2Gi
+                limits:
+                  # ECK sizes the JVM heap to half the memory limit
+                  # automatically - 2Gi limit means a 1Gi heap.
+                  memory: 2Gi
