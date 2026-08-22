@@ -21,6 +21,32 @@ spec:
   # ("cert-manager-cert-manager") and every rendered resource inherits that
   # doubled prefix. Same choice istiod made in #71.
   releaseName: cert-manager
+  # The controller's IRSA role ARN embeds the AWS account id, and this repo is
+  # public, so it is NOT committed. It is supplied by an out-of-band ConfigMap
+  # (cert-manager-irsa) in flux-system, created from the terraform output
+  # with a heredoc so the YAML indentation below is copied literally, not
+  # reconstructed from this comment's own prefix (karpenter's HelmRelease
+  # comment does the latter - stripping "# " from every line there collapses
+  # "annotations:" onto the same level as "serviceAccount:", so the
+  # ServiceAccount gets no role-arn annotation and DNS-01 fails with
+  # AccessDenied while everything in Git looks correct):
+  #
+  # ARN=$(terraform -chdir=infra-aws/cert-manager output -raw controller_role_arn)
+  #
+  # kubectl create configmap cert-manager-irsa -n flux-system \
+  #   --from-literal=values.yaml="$(cat <<EOF
+  # serviceAccount:
+  #   annotations:
+  #     eks.amazonaws.com/role-arn: ${ARN}
+  # EOF
+  # )"
+  #
+  # valuesFrom merges after spec.values, so this only sets the SA annotation.
+  valuesFrom:
+    - kind: ConfigMap
+      name: cert-manager-irsa
+      valuesKey: values.yaml
+      optional: false
   values:
     # Since chart v1.15 cert-manager renders its CRDs as ordinary templates
     # (they are NOT in the chart's crds/ directory), so Helm - and therefore
