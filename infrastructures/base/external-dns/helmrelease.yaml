@@ -67,6 +67,11 @@ spec:
     # permission - the IAM policy is what actually confines the controller to
     # hostedzone/Z033052035FXAKF23D1RR. Both exist so a mistake here is a
     # no-op rather than a cross-zone write.
+    #
+    # Kept in base, unlike txtOwnerId: the platform has exactly one public
+    # zone and every environment publishes into it, so this is neutral in the
+    # same way cert-manager's region is. If an environment ever gets its own
+    # zone, this moves to the overlays that day.
     domainFilters:
       - 25c-team1.art
 
@@ -86,11 +91,15 @@ spec:
     # claims - this is what lets it share the zone with cert-manager's
     # _acme-challenge.* records and with anything created by hand.
     registry: txt
-    # Identifies this cluster in those TXT records. Must be unique per
-    # external-dns instance sharing the zone; if a second cluster or a lab
-    # install ever points here, a different id is what stops the two from
-    # fighting over the same records.
-    txtOwnerId: u25c-shared
+    # txtOwnerId is deliberately NOT set here. It identifies one specific
+    # external-dns instance in those TXT records and must be unique per
+    # instance sharing the zone - so it is environment-specific by definition
+    # and belongs in each overlay's patch, not in this environment-neutral
+    # base. Set it in base and a second cluster inheriting this library would
+    # silently claim the first cluster's records.
+    #
+    # EVERY overlay must set it. external-dns does not fail without one - it
+    # falls back to the owner id "default", which is worse than failing.
     # Ownership TXT records are named edns-<record> instead of <record>. Without
     # a prefix the registry record collides with its own CNAME at the same name
     # - DNS forbids a CNAME alongside any other record type, and ingress
@@ -120,7 +129,6 @@ spec:
       - service
       - ingress
 
-    # How often the controller reconciles the zone against cluster state. One
-    # minute is the chart default and is the interval Route 53 API calls are
-    # billed against; the zone is small, so it stays.
-    interval: 1m
+    # Reconcile interval is set per environment (it is the rate Route 53 API
+    # calls are billed at), so it lives in the overlay patch alongside the
+    # resource sizing.

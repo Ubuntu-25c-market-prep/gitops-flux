@@ -30,3 +30,17 @@ spec:
 
     podLabels:
       environment: dev
+
+    # Environment-specific, per the repo's base/overlay split: base holds
+    # environment-neutral values, the overlay patches in what is true only of
+    # this cluster.
+    #
+    # This cluster's identity in the TXT ownership registry. Every overlay
+    # must set its own - external-dns falls back to "default" otherwise, and
+    # two clusters sharing the zone would claim each other's records.
+    txtOwnerId: u25c-shared
+
+    # Reconcile interval. One minute is the chart default; the zone is small
+    # so dev keeps it. A quieter environment can raise this to cut Route 53
+    # API calls without changing the base.
+    interval: 1m
