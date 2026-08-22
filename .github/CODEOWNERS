@@ -33,8 +33,16 @@
 /infrastructures/dev/25c-shared/external-dns/                @Ubuntu-25c-market-prep/utils
 
 # Scaling - karpenter.
+#
+# karpenter-nodepool/ is a THIRD directory, not a typo. The NodePool and
+# EC2NodeClass custom resources cannot live beside the controller's HelmRelease:
+# they depend on CRDs that HelmRelease installs, so they are applied as a
+# separate step once the controller is Ready. Without a rule of its own that
+# directory falls through to the `*` fallback and lands on @flux and @cto -
+# which is exactly what happened on #107.
 /infrastructures/base/karpenter/                             @Ubuntu-25c-market-prep/scaling
 /infrastructures/dev/25c-shared/karpenter/                   @Ubuntu-25c-market-prep/scaling
+/infrastructures/dev/25c-shared/karpenter-nodepool/          @Ubuntu-25c-market-prep/scaling
 
 # Mesh - istio.
 /infrastructures/base/istio-base/                            @Ubuntu-25c-market-prep/istio
