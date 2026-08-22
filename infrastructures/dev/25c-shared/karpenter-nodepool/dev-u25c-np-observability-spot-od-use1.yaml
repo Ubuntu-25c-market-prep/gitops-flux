@@ -1,0 +1,166 @@
+# gitops-flux/infrastructures/dev/25c-shared/karpenter-nodepool/dev-u25c-np-observability-spot-od-use1.yaml
+#
+# Prometheus, Alertmanager, Grafana and (when it lands) Thanos.
+#
+# Separate from `platform` for two reasons that are not stylistic:
+#
+#   1. Shape. The platform control plane is many tiny CPU-shaped pods; Prometheus
+#      is one large memory-shaped pod whose footprint grows with active series,
+#      not with request rate. Packing it against t3/m6i sizes the pool by the
+#      wrong dimension.
+#
+#   2. State. All three hold RWO EBS volumes (prometheus 10Gi, alertmanager 2Gi,
+#      grafana 2Gi). An RWO volume is pinned to the AZ it was created in, so a
+#      replacement node MUST come up in that same AZ. Karpenter reads the bound
+#      PV's topology and honours it - which is exactly why this pool declares no
+#      zone requirement of its own. Constraining zones here would fight it.
+#
+# Spot first, on-demand as the fallback.
+#
+# COST-TRADEOFF (deliberate deviation - write this up in the docs):
+#   The production-correct setting for this pool is on-demand ONLY: losing
+#   Prometheus to a spot reclamation means losing alerting at precisely the
+#   moment something is going wrong, which is the one time it has to work.
+#
+#   This is a school project, so cost wins and the pool takes spot first. This
+#   pool is the more painful of the two spot conversions, because of point 2
+#   above - the pods here are stateful:
+#
+#     buys   r5.large drops from $126/mo on-demand to $35.99/mo spot. Moving
+#            off the r-family entirely - measured usage allows a t4g.medium -
+#            takes it to $12.99/mo. The instance-type list below is where most
+#            of the saving on this pool actually comes from, not the spot
+#            conversion.
+#     costs  On reclamation Prometheus must detach its 10Gi EBS volume and
+#            reattach IN THE SAME AZ. If that AZ has no spot capacity, the
+#            on-demand fallback covers it; if it has none of either, the pod
+#            stays Pending and there is a hole in the scrape record for the
+#            duration. Historical data already written is safe - it is on the
+#            volume, not in the pod - but alerting is blind while it is down.
+#
+#   Mitigation if this bites: raise the Prometheus scrape interval so gaps are
+#   less visible, or move THIS pool back to on-demand while leaving the other
+#   three on spot. It is the smallest pool, so it is also the cheapest one to
+#   make reliable again.
+#
+#   To revert for production: set values to ["on-demand"] below and rename this
+#   file and its metadata.name back to dev-u25c-np-observability-od-use1.
+apiVersion: karpenter.sh/v1
+kind: NodePool
+metadata:
+  name: dev-u25c-np-observability-spot-od-use1
+spec:
+  template:
+    metadata:
+      labels:
+        u25c.io/pool: observability
+    spec:
+      nodeClassRef:
+        group: karpenter.k8s.aws
+        kind: EC2NodeClass
+        name: dev-u25c-nc-shared-use1
+
+      taints:
+        - key: u25c.io/pool
+          value: observability
+          effect: NoSchedule
+
+      expireAfter: 720h
+
+      requirements:
+        # COST-TRADEOFF: Graviton (arm64) is allowed alongside amd64, and
+        # Karpenter buys whichever is cheaper for the pending pods. t4g is
+        # ~11% under the t3a equivalent before Graviton's price/performance
+        # advantage is counted.
+        #
+        # Safe here ONLY because every image in this pool was checked and ships
+        # an arm64 variant (docker manifest inspect, all linux/arm64 present).
+        # A mixed-arch pool with an amd64-only image produces "exec format
+        # error" CrashLoopBackOff, which is a miserable thing to debug - so
+        # re-check before adding a workload to this pool.
+        - key: kubernetes.io/arch
+          operator: In
+          values: ["arm64", "amd64"]
+        - key: kubernetes.io/os
+          operator: In
+          values: ["linux"]
+        - key: karpenter.sh/capacity-type
+          operator: In
+          # COST-TRADEOFF: ["on-demand"] is the production setting. See header.
+          values: ["spot", "on-demand"]
+        # COST-TRADEOFF: this pool used to be r-family only (16Gi). It was the
+        # single most expensive shape in the cluster - r6i.large is ~$36/mo spot
+        # - to hold a monitoring stack that requests 275m / 704Mi in total.
+        # The 8Gi tier is now listed first-class, so Karpenter buys a t3a.large
+        # at ~$18/mo unless the workload genuinely needs more. Karpenter always
+        # picks the cheapest type that fits, so the r-family entries stay as
+        # headroom and cost nothing until Prometheus actually needs them.
+        #
+        # m5.xlarge is kept as a third 16Gi option purely for spot capacity
+        # breadth. It is not expected to win on price - measured at $49.13/mo
+        # against r5.large's $35.99 - but a pool with only two entries in its
+        # largest size class is one capacity gap away from falling back to
+        # on-demand. m6i.xlarge is excluded: at $84.83/mo in us-east-1a it is
+        # the single worst value on the allow-list.
+        #
+        # COST-TRADEOFF: the 4Gi mediums ARE included, on measured evidence.
+        #
+        # An earlier revision excluded them, reasoning that Prometheus runs well
+        # above its request - the TSDB head block grows with active series - and
+        # that with no metrics-server installed the real figure could not be
+        # measured. The second half of that was wrong. Prometheus is itself the
+        # measurement, and it will answer the question about its own memory:
+        #
+        #   kubectl exec -n monitoring \
+        #     prometheus-monitoring-kube-prometheus-prometheus-0 -c prometheus \
+        #     -- wget -qO- 'http://localhost:9090/api/v1/query?query=\
+        #        container_memory_working_set_bytes{namespace="monitoring"}'
+        #
+        # Measured 2026-08-22: the prometheus container holds 513 MiB, and the
+        # monitoring namespace 1007 MiB in total, against a 704Mi request. A
+        # t4g.medium leaves 3736Mi usable once DaemonSets are counted - roughly
+        # 7x what Prometheus actually uses - at $12.99/mo against t4g.large's
+        # $19.34.
+        #
+        # The larger sizes stay listed as headroom. Karpenter buys the cheapest
+        # type that FITS, so they cost nothing until active series grow enough
+        # to need them, and this pool is where that growth would show up first.
+        # If Prometheus is OOMKilled, re-run the query above before assuming
+        # the node is at fault - the pod's memory limit binds before the
+        # node's capacity does.
+        - key: node.kubernetes.io/instance-type
+          operator: In
+          values:
+            # 4Gi tier - measured sufficient, see above
+            - t4g.medium
+            - t3.medium
+            - t3a.medium
+            # 8Gi tier
+            - t4g.large
+            - m7g.large
+            # amd64 8Gi tier
+            - t3a.large
+            - t3.large
+            - m5.large
+            - m6i.large
+            # 16Gi headroom. No arm64 entry: the Graviton 16Gi shapes are
+            # 4 vCPU (t4g.xlarge, m7g.xlarge) and price above r5.large's
+            # 2 vCPU / 16Gi, so they would never be the cheapest fit.
+            - r5.large
+            - r6i.large
+            - m5.xlarge
+
+  disruption:
+    # WhenEmpty, NOT WhenEmptyOrUnderutilized. A node here is underutilised by
+    # design - it holds one big pod and a lot of headroom for series growth.
+    # Consolidating it detaches a 10Gi EBS volume, reattaches it elsewhere in
+    # the same AZ, and leaves a gap in the scrape record. Only reclaim nodes
+    # that are genuinely empty.
+    consolidationPolicy: WhenEmpty
+    consolidateAfter: 30m
+    budgets:
+      - nodes: "1"
+
+  limits:
+    cpu: "8"
+    memory: 32Gi

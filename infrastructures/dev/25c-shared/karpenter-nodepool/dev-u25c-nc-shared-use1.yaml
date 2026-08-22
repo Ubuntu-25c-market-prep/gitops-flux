@@ -1,0 +1,45 @@
+# gitops-flux/infrastructures/dev/25c-shared/karpenter-nodepool/dev-u25c-nc-shared-use1.yaml
+#
+# ONE node class, shared by all four NodePools. Everything that varies between
+# pools - capacity type, instance types, taints, disruption policy - lives on
+# the NodePool. Everything that is identical - the AMI, the node IAM role, the
+# subnets, the security groups, IMDS hardening - lives here.
+#
+# Per-pool cost allocation does not need separate node classes: Karpenter tags
+# every instance it launches with karpenter.sh/nodepool automatically.
+apiVersion: karpenter.k8s.aws/v1
+kind: EC2NodeClass
+metadata:
+  name: dev-u25c-nc-shared-use1
+spec:
+  # AL2023, latest EKS-optimised AMI. The alias sets both the family and the
+  # AMI, matching the managed node group (which also runs AL2023).
+  amiSelectorTerms:
+    - alias: al2023@latest
+
+  # The dedicated node role from the karpenter terraform layer. Karpenter
+  # creates and manages the instance profile for it at runtime.
+  role: u25c-shared-karpenter-node
+
+  # Discover the subnets and security groups tagged by the terraform layer.
+  # Both the node SG and the EKS-managed cluster SG carry this tag, so nodes get
+  # the same connectivity the managed node group's launch template provides.
+  subnetSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: u25c-shared
+  securityGroupSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: u25c-shared
+
+  # IMDSv2 required, hop limit 1 (ADR 0005): a pod is one hop from IMDS, so this
+  # stops a pod stealing the node's IAM credentials. Matches modules/eks.
+  metadataOptions:
+    httpEndpoint: enabled
+    httpTokens: required
+    httpPutResponseHopLimit: 1
+
+  tags:
+    Org: u25c
+    Env: shared
+    Workstream: infra
+    ManagedBy: karpenter
