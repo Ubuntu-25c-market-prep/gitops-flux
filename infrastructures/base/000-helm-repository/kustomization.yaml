@@ -16,3 +16,4 @@ resources:
   - keda.yaml
   - teleport.yaml
   - argo.yaml
+  - rancher.yaml

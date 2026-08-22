@@ -1,0 +1,18 @@
+# gitops-flux/infrastructures/dev/25c-shared/rancher
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# NOTE: deliberately no top-level `namespace:` here, for the same reason the
+# external-dns overlay documents - it would rewrite metadata.namespace on the
+# HelmRelease and move it out of flux-system, where its HelmRepository sourceRef
+# lives. Where the pods run is set by targetNamespace in the base HelmRelease.
+resources:
+  - ../../../base/rancher
+  - tls-ca-sealedsecret.yaml
+  - virtualservice.yaml
+patches:
+  - path: patch.yaml
+    target:
+      kind: HelmRelease
+labels:
+  - pairs:
+      kustomize.toolkit.fluxcd.io/prune: enabled
