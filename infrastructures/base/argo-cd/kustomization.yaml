@@ -3,8 +3,21 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - helmrelease.yaml
-  # Applied by Flux, but only ever reconciled once - Argo CD takes over from
-  # here. Listed after the release so ordering reads the way it happens, though
-  # kustomize does not guarantee apply order and Flux retries until the CRD
-  # exists.
-  - bootstrap-app.yaml
+
+# bootstrap-app.yaml is NOT listed here, and must not be.
+#
+# It is an argoproj.io/v1alpha1 Application, and that CRD is installed by the
+# HelmRelease in this very directory. kustomize-controller server-side dry-runs
+# the whole path as a unit before applying any of it, so on a cluster where Argo
+# CD is not yet installed the dry-run fails with:
+#
+#   no matches for kind "Application" in version "argoproj.io/v1alpha1"
+#
+# and NOTHING in the infrastructure path applies - not the HelmRelease that
+# would have created the CRD, and not any unrelated component either. One
+# resource that cannot be dry-run stops every workstream, which is the same
+# failure shape as #93.
+#
+# The Application is applied by a separate Flux Kustomization that dependsOn
+# this one, so it runs only after Argo CD is healthy. See
+# clusters/dev/25c-shared/argo-bootstrap.yaml.
