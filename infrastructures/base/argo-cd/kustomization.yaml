@@ -1,0 +1,10 @@
+# gitops-flux/infrastructures/base/argo-cd
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - helmrelease.yaml
+  # Applied by Flux, but only ever reconciled once - Argo CD takes over from
+  # here. Listed after the release so ordering reads the way it happens, though
+  # kustomize does not guarantee apply order and Flux retries until the CRD
+  # exists.
+  - bootstrap-app.yaml

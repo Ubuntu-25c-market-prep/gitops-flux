@@ -1,0 +1,50 @@
+# gitops-flux/infrastructures/base/argo-cd/bootstrap-app.yaml
+#
+# THE HANDOVER SEAM. One object, and it is the only place the two controllers
+# meet (ADR 0012). Flux creates it and never looks inside; everything downstream
+# of it is reconciled by Argo CD.
+#
+# It points at this cluster's entrypoint directory in gitops-argocd, not at the
+# repository root. That is what makes clusters additive (ADR 0014): a second
+# cluster ships its own copy of this file pointing at its own directory, and
+# neither cluster can see the other's Applications.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: bootstrap
+  namespace: argocd
+  labels:
+    u25c.io/workstream: argocd
+    u25c.io/owner: argocd
+  finalizers:
+    # Removing this Application removes what it created. Without it the
+    # AppProject and ApplicationSets would be orphaned - still running, owned by
+    # nothing, reconciled by nothing.
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  # Deliberately `default`, not `business`. This Application creates AppProjects
+  # and ApplicationSets, which are cluster-configuration objects that the
+  # `business` project is explicitly forbidden from touching. A project cannot
+  # be the thing that grants its own existence.
+  project: default
+
+  source:
+    repoURL: https://github.com/Ubuntu-25c-market-prep/gitops-argocd.git
+    targetRevision: main
+    # Per-cluster path. A prod cluster would point at clusters/prod/<name>.
+    path: clusters/dev/25c-shared
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
