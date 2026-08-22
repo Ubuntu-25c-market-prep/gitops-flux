@@ -1,0 +1,169 @@
+# gitops-flux/infrastructures/base/argo-cd/helmrelease.yaml
+#
+# Flux installs and owns the Argo CD CONTROL PLANE. gitops-argocd owns only
+# argoproj.io custom resources (ADR 0012). The boundary is drawn at `kind`
+# rather than at "install versus configuration", because this chart renders
+# argocd-cm and argocd-rbac-cm itself - so any split along that line would put
+# two controllers on one object.
+#
+# That is why the SSO connector and the RBAC policy below live here, in a Flux
+# repository, rather than in gitops-argocd where the argocd workstream might
+# expect them.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: argo-cd
+  namespace: flux-system
+spec:
+  timeout: 15m
+  chart:
+    spec:
+      chart: argo-cd
+      # Pinned. Argo CD upgrades roll every component including the repo-server
+      # and the application controller, which pauses reconciliation for the whole
+      # cluster - that is its own PR with its own window, never a drive-by bump.
+      version: "10.4.0"          # appVersion v3.5.1
+      sourceRef:
+        kind: HelmRepository
+        name: argo
+        namespace: flux-system
+  interval: 20h0m0s
+  targetNamespace: argocd
+  install:
+    # The namespace is created by 000-cluster-wide-resources, not here, so that
+    # it carries the workstream labels every other namespace has.
+    createNamespace: false
+    crds: CreateReplace
+    remediation:
+      retries: 3
+  upgrade:
+    crds: CreateReplace
+    remediation:
+      retries: 3
+
+  values:
+    global:
+      # FinOps showback reads these. Applied to every component the chart makes.
+      additionalLabels:
+        u25c.io/workstream: argocd
+        u25c.io/owner: argocd
+
+    configs:
+      cm:
+        # ---------------------------------------------------------------------
+        # AUTHENTICATION: local admin for now, SSO later
+        # ---------------------------------------------------------------------
+        # The chart's built-in admin account, deliberately, as the SIMPLEST thing
+        # that works while the organisation's identity provider is undecided
+        # (ops-program#52 is open; a GitHub OAuth App may be an infra-v2
+        # decision rather than a today decision).
+        #
+        # What that costs, stated honestly: one shared account rather than named
+        # people, and an audit trail that says "admin" rather than who. Acceptable
+        # here and not acceptable forever - see the migration note below.
+        #
+        # What it does NOT cost: the password is generated in-cluster into
+        # argocd-initial-admin-secret and never enters git, and there is no
+        # ingress yet, so reaching this at all requires cluster access.
+        admin.enabled: true
+
+        # ---------------------------------------------------------------------
+        # MIGRATING TO SSO LATER - deliberately kept to one PR
+        # ---------------------------------------------------------------------
+        # Everything needed for the switch is already in place except the
+        # connector itself. When the provider is decided:
+        #
+        #   1. add `dex.enabled: true` and a connectors block here, e.g. for
+        #      GitHub:
+        #
+        #        dex.config: |
+        #          connectors:
+        #            - type: github
+        #              id: github
+        #              name: GitHub
+        #              config:
+        #                clientID: $argocd-github-oauth:clientID
+        #                clientSecret: $argocd-github-oauth:clientSecret
+        #                orgs: [{name: Ubuntu-25c-market-prep}]
+        #                teamNameField: slug
+        #
+        #   2. add the client secret as a strict-scoped SealedSecret labelled
+        #      app.kubernetes.io/part-of: argocd (ops-program#51)
+        #   3. flip admin.enabled to false
+        #
+        # The RBAC policy below already names GitHub teams and needs NO change:
+        # those `g,` lines simply match nothing until a connector supplies
+        # groups. Writing them now costs nothing and means the migration adds a
+        # connector rather than redesigning authorisation.
+        #
+        # No user migration either way - there are no local users beyond admin.
+
+      # -----------------------------------------------------------------------
+      # RBAC per workstream
+      # -----------------------------------------------------------------------
+      # Read `g,` as "this GitHub team gets this role" and `p,` as "this role may
+      # do this verb on these applications".
+      #
+      # Note what is ABSENT: nothing grants sync on *-prod. That is how "prod
+      # syncs require manual approval" becomes a control rather than a
+      # convention - it holds even for someone who ignores the convention.
+      rbac:
+        create: true
+        # These `g,` lines are INERT until an SSO connector supplies groups.
+        # That is intentional: the authorisation model is decided and written
+        # down now, so enabling SSO later is a connector change rather than a
+        # design exercise. Until then the only usable account is admin, which
+        # bypasses this policy entirely.
+        # Everyone in the org can look. Nobody can act without being granted it.
+        policy.default: role:readonly
+        policy.csv: |
+          g, Ubuntu-25c-market-prep:argocd, role:admin
+          g, Ubuntu-25c-market-prep:cto,    role:admin
+
+          p, role:business-deployer, applications, sync, business/*-dev,   allow
+          p, role:business-deployer, applications, get,  business/*,       allow
+          p, role:business-deployer, applications, sync, business/*-stage, allow
+          g, Ubuntu-25c-market-prep:platform-all, role:business-deployer
+        scopes: "[groups]"
+
+      params:
+        # TLS is terminated at the Istio gateway, so the server speaks plain
+        # HTTP behind it. Without this the pod redirects to HTTPS and the
+        # gateway loops.
+        server.insecure: true
+
+    # -------------------------------------------------------------------------
+    # Requests and limits on every component.
+    #
+    # Kyverno will enforce these (platform-security#14). Sized for a cluster with
+    # a handful of Applications; the application controller is the one that grows
+    # with Application count, so it gets the most headroom.
+    # -------------------------------------------------------------------------
+    controller:
+      resources:
+        requests: {cpu: 100m, memory: 256Mi}
+        limits:   {cpu: 500m, memory: 1Gi}
+    repoServer:
+      resources:
+        requests: {cpu: 50m, memory: 128Mi}
+        limits:   {cpu: 300m, memory: 512Mi}
+    server:
+      resources:
+        requests: {cpu: 25m, memory: 64Mi}
+        limits:   {cpu: 200m, memory: 256Mi}
+    applicationSet:
+      resources:
+        requests: {cpu: 25m, memory: 64Mi}
+        limits:   {cpu: 200m, memory: 256Mi}
+    dex:
+      # Not running: there is no connector to serve. An idle Dex is a pod slot
+      # and a CVE surface. Enable it in the same PR that adds the connector.
+      enabled: false
+    notifications:
+      # Not configured, so not run. Enable it in the PR that adds a receiver,
+      # not before - an idle controller is a pod slot and a CVE surface.
+      enabled: false
+    redis:
+      resources:
+        requests: {cpu: 25m, memory: 64Mi}
+        limits:   {cpu: 200m, memory: 256Mi}

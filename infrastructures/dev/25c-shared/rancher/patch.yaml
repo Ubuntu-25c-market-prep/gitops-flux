@@ -1,0 +1,95 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: rancher
+  namespace: flux-system
+spec:
+  # The rancher chart exposes NO nodeSelector, tolerations or affinity values -
+  # confirmed against 2.14.3's values.yaml, which has resources, antiAffinity
+  # and topologyKey and nothing else for scheduling. Setting them under
+  # `values:` would be accepted by Helm, silently ignored, and leave Git
+  # claiming a placement that never happened - the same trap the external-dns
+  # overlay documents for replicaCount.
+  #
+  # A postRenderer patches the chart's rendered output instead, which is the
+  # Flux-native answer when a chart will not take a value.
+  #
+  # This matters because all three pools Rancher could sensibly use - platform,
+  # burst and observability - are TAINTED (gitops-flux#107). A pod that cannot
+  # declare a toleration cannot land on any of them, so without this Rancher
+  # falls through to the untainted `apps` pool, which is reserved for business
+  # workloads.
+  postRenderers:
+    - kustomize:
+        patches:
+          - target:
+              kind: Deployment
+              name: rancher
+            patch: |
+              # `add` on /spec/template/spec/nodeSelector creates the key -
+              # the chart renders no nodeSelector at all, so `replace` would
+              # fail on a missing path.
+              - op: add
+                path: /spec/template/spec/nodeSelector
+                value:
+                  u25c.io/pool: platform
+                  # The pools admit arm64 and amd64. Rancher publishes
+                  # multi-arch images, but several components it pulls in have
+                  # historically been amd64-only, and a Spot pool is free to
+                  # hand us either. Pinning removes a class of failure that
+                  # only shows up after a node is replaced.
+                  kubernetes.io/arch: amd64
+              # `/-` APPENDS to the existing tolerations list. The chart already
+              # renders a cattle.io/os=linux toleration; replacing the list
+              # instead of appending would drop it.
+              - op: add
+                path: /spec/template/spec/tolerations/-
+                value:
+                  key: u25c.io/pool
+                  operator: Equal
+                  value: platform
+                  effect: NoSchedule
+
+  values:
+    # The name published by external-dns from the istio ingressgateway Service
+    # (#108). Rancher writes this into its own settings and every agent it ever
+    # deploys calls back to it, so changing it later is not a values edit - it
+    # is a re-registration of every downstream cluster.
+    hostname: rancher.25c-team1.art
+
+    # Chart default is 3. One is right for dev: the pool caps at 8 CPU / 32Gi,
+    # and three Rancher replicas on a cluster with two t3.medium nodes and a
+    # Spot-first pool buys availability nobody is asking for here.
+    replicas: 1
+
+    # The gateway serves a SELF-SIGNED certificate (issuer == subject ==
+    # CN=istio-ingress.25c-team1.art, SANs *.25c-team1.art, *.nip.io,
+    # localhost, valid to 2036). Browsers do not trust it and neither would
+    # Rancher's agents, which refuse an untrusted server outright.
+    #
+    # privateCA makes the chart mount the tls-ca secret at
+    # /etc/rancher/ssl/cacerts.pem, and Rancher hands that CA to every agent it
+    # deploys so they trust this specific certificate.
+    #
+    # THIS IS TEMPORARY. When the istio workstream replaces the gateway cert
+    # with a cert-manager/Let's Encrypt one, this MUST flip to false and the
+    # tls-ca secret must be deleted - a publicly trusted chain will not
+    # validate against a bundle containing only the old self-signed CA, and
+    # every agent breaks at once. Whoever swaps that certificate has to change
+    # this file in the same window.
+    privateCA: true
+
+    # Dev sizing. A CPU request but no CPU limit, matching cert-manager and
+    # external-dns in this overlay: the request is what the scheduler reserves,
+    # while a CPU limit would throttle Rancher's controllers for no benefit.
+    # Memory is not compressible, so it gets a real ceiling.
+    #
+    # 1Gi/2Gi is well under SUSE's documented 4 vCPU / 16Gi "Small" tier, which
+    # sizes for managing up to 150 clusters. This one manages itself and, later,
+    # one home k3s cluster.
+    resources:
+      requests:
+        cpu: 250m
+        memory: 1Gi
+      limits:
+        memory: 2Gi

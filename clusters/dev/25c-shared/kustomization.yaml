@@ -3,5 +3,6 @@ kind: Kustomization
 resources:
   - ../../base/2.4.0
   - infrastructures.yaml
+  - argo-bootstrap.yaml
 patches:
   - path: patch.yaml
