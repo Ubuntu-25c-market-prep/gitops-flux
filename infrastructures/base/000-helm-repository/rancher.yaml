@@ -1,0 +1,16 @@
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: rancher
+  namespace: flux-system
+spec:
+  interval: 24h
+  # The `stable` channel, not `latest`. Rancher publishes three: stable is what
+  # SUSE considers production-ready, latest carries the newest release the day
+  # it ships, and alpha is pre-release. They are separate repositories, not
+  # separate versions in one index - so switching channels means editing this
+  # URL, which is deliberately a visible change rather than a version bump.
+  #
+  # Classic index.yaml repository, like external-dns and cert-manager. No
+  # `type: oci` - that line belongs to karpenter alone.
+  url: https://releases.rancher.com/server-charts/stable

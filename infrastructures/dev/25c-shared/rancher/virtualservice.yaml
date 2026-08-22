@@ -1,0 +1,40 @@
+# gitops-flux/infrastructures/dev/25c-shared/rancher/virtualservice.yaml
+#
+# The routing half. gateway.yaml (istio-gateway overlay) already says "I accept
+# *.25c-team1.art on 443 and here is the certificate"; nothing yet said where
+# rancher.25c-team1.art should GO, which is why that hostname returns Istio's
+# 404 today.
+#
+# This lives in the rancher overlay rather than the istio-gateway one on
+# purpose: the Gateway is shared infrastructure owned by the istio workstream,
+# but the route for one hostname belongs with the thing it routes to. Deleting
+# this directory removes Rancher and its route together.
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: rancher
+  namespace: cattle-system
+spec:
+  hosts:
+    - rancher.25c-team1.art
+  # <namespace>/<name> of the shared Gateway. A bare name would be resolved in
+  # this VirtualService's own namespace (cattle-system), where no Gateway
+  # exists, and the route would silently attach to nothing.
+  gateways:
+    - platform-istio/ingressgateway
+  http:
+    - route:
+        - destination:
+            # Rancher listens on plain HTTP here - TLS was terminated at the
+            # gateway (spec.values.tls: external in the base HelmRelease), and
+            # Envoy sets X-Forwarded-Proto so Rancher knows the original
+            # request was HTTPS.
+            host: rancher.cattle-system.svc.cluster.local
+            port:
+              number: 80
+      # Envoy's default route timeout is 15 seconds. Rancher's UI holds long
+      # websocket connections for live cluster state, and its agents hold
+      # long-lived tunnels - all of which would be cut every 15s, showing up as
+      # a UI that constantly reconnects rather than as an obvious error.
+      # 0s disables the timeout for this route only.
+      timeout: 0s

@@ -1,0 +1,78 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: rancher
+  namespace: flux-system
+spec:
+  chart:
+    spec:
+      chart: rancher
+      # Chart version and appVersion track together here - chart 2.14.3 ships
+      # rancher v2.14.3. No leading "v" on the chart version, unlike
+      # cert-manager's.
+      #
+      # 2.14.3's support matrix covers Kubernetes 1.33-1.35 for the cluster
+      # Rancher runs on. This cluster is 1.34 (infra-aws/eks/config.yaml), so it
+      # sits inside that range - but the EKS upgrade past 1.35 must not outrun
+      # Rancher's matrix, or the local cluster becomes unsupported.
+      version: "2.14.3"
+      sourceRef:
+        kind: HelmRepository
+        name: rancher
+        namespace: flux-system
+  interval: 20h0m0s
+  targetNamespace: cattle-system
+  # Same trap karpenter hit in #70, cert-manager avoided in #75 and external-dns
+  # avoided in #106: without this Flux composes the release name as
+  # <targetNamespace>-<name> ("cattle-system-rancher"). Rancher's templates and
+  # the VirtualService that will route to it both expect `rancher`.
+  releaseName: rancher
+
+  # The namespace is declared in 000-cluster-wide-resources, not created by
+  # Helm, so Flux owns it and prune behaves consistently.
+  install:
+    createNamespace: false
+    remediation:
+      retries: 3
+    # Rancher is slow to install: the chart brings the server, its webhook,
+    # fleet, gitjob and the provisioning CAPI controllers, and the server does
+    # a lot of first-boot work before reporting ready. The chart default is not
+    # enough - gitops-flux#34 hit exactly this on a much smaller chart.
+    timeout: 15m
+  upgrade:
+    remediation:
+      retries: 3
+      strategy: rollback
+    timeout: 15m
+
+  values:
+    # TLS is terminated by the Istio ingress gateway, not by Rancher and not by
+    # an Ingress controller. `external` tells Rancher it sits behind a proxy
+    # that already did TLS, so it serves plain HTTP on :80 and trusts the
+    # X-Forwarded-Proto header Envoy sets. Without it Rancher redirects to
+    # HTTPS forever.
+    tls: external
+
+    # This cluster has no Ingress controller at all - Istio's Gateway is the
+    # only ingress path, and this repo deliberately does not use Kubernetes
+    # Gateway API (see the note at the top of the istio-gateway overlay's
+    # gateway.yaml). `none` renders neither an Ingress nor a Gateway API
+    # Gateway, leaving just the Service for a VirtualService to target.
+    #
+    # Verified with `helm template` against 2.14.3: with this set the chart
+    # renders no Ingress and no Gateway - only Deployment, Service,
+    # ServiceAccount, RBAC, ConfigMaps, Jobs and a PriorityClass.
+    networkExposure:
+      type: "none"
+
+    # bootstrapPassword is deliberately NOT set. Left unset, Rancher generates
+    # one and stores it in secret/bootstrap-secret in cattle-system:
+    #
+    #   kubectl -n cattle-system get secret bootstrap-secret \
+    #     -o go-template='{{.data.bootstrapPassword|base64decode}}'
+    #
+    # That keeps the credential out of Git entirely - better than sealing one,
+    # because there is nothing to leak, rotate or re-seal.
+
+    # Everything else - hostname, replicas, resources, the private CA and node
+    # scheduling - is cluster-specific and lives in the overlay.
