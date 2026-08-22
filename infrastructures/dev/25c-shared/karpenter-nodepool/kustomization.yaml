@@ -1,0 +1,156 @@
+# gitops-flux/infrastructures/dev/25c-shared/karpenter-nodepool
+#
+# The Karpenter custom resources: one shared EC2NodeClass and four NodePools.
+# These depend on the CRDs installed by the karpenter HelmRelease, so this
+# folder is committed in a SECOND step, only after the controller is Ready and
+# its CRDs are established. Adding it before then makes the infrastructure
+# Kustomization fail with "no matches for kind NodePool".
+#
+#
+# NAMING
+# ------
+# Adopted from the eks-nbu convention (uat-nbu-ng-<workload>-<capacity>-aps1).
+# Filename and metadata.name are always identical:
+#
+#     dev - u25c - np - <workload> - [biz] - <capacity> - use1
+#      │      │     │        │         │          │         │
+#     env    org   kind   what it is  business  od/spot   region
+#                                     not platform
+#
+#   env       dev            this cluster is 25c-shared/dev
+#   org       u25c           matches the u25c.io/ label prefix and the Org tag
+#   kind      np | nc        NodePool or EC2NodeClass. NOT "ng" - these are
+#                            Karpenter NodePools, not EKS managed node groups,
+#                            and conflating the two hides that Karpenter sizes
+#                            nodes per pending pod rather than per ASG.
+#   biz       only on apps   business-unit workloads vs. platform, as in eks-nbu
+#   capacity  od | spot      | spot-od when the pool offers both and lets
+#                            Karpenter choose. Three of the four pools are
+#                            spot-od today - see COST-TRADEOFF below.
+#   region    use1           us-east-1
+#
+# Two tokens from the source convention are deliberately NOT carried over:
+#
+#   arch (arm64)  eks-nbu needs -arm64- because each of its node groups is
+#                 single-architecture. Three of the pools here are MIXED arch
+#                 (arm64 + amd64) and let Karpenter buy whichever is cheaper,
+#                 so no single token describes them. The exception is apps,
+#                 which is amd64-only - see its header for why.
+#
+#                 For the record: t4g.*, m7g.large and m7g.xlarge ARE on the
+#                 workloads-OU SCP allow-list. An earlier draft of this folder
+#                 claimed otherwise.
+#   cgroupV2      eks-nbu carries it because AL2 (cgroup v1) and AL2023 node
+#                 groups coexist there during migration. This cluster is AL2023
+#                 from the start, so the marker would distinguish nothing.
+#
+# Note that unlike a managed node group, a Karpenter NodePool does NOT put the
+# AZ in its name. eks-nbu needs -aps1-a / -aps1-b because an MNG is pinned to
+# its subnets; Karpenter resolves the zone at provision time from the pending
+# pod's volume topology. See the observability pool for why that matters.
+#
+#
+# THE FOUR POOLS
+# --------------
+# Separated by failure tolerance, not by team:
+#
+#   platform       spot + on-demand, tainted   control plane - Flux,
+#                                              cert-manager, external-dns,
+#                                              KEDA, Teleport, Istio
+#   observability  spot + on-demand, tainted   Prometheus/Alertmanager/Grafana -
+#                                              memory shaped, pinned to an AZ
+#                                              by RWO EBS
+#   apps           spot + on-demand            app-dev/stage/prod. UNTAINTED:
+#                                              the default landing zone
+#   burst          spot only, tainted          KEDA workers, Jobs, ETL -
+#                                              retryable
+#
+#
+# COST-TRADEOFF
+# -------------
+# THIS SECTION IS THE SOURCE MATERIAL FOR THE DOCS WRITE-UP. Every deviation is
+# also marked inline at the line it affects:  grep -rn COST-TRADEOFF .
+#
+# This is a school project on a shared dev cluster, and cost is the binding
+# constraint rather than availability. So EVERY pool takes spot first, with
+# on-demand only as the fallback Karpenter uses when spot is unavailable in an
+# AZ. Two of those four are deliberate deviations from what production would do:
+#
+#   pool           here       production   why production differs
+#   ------------------------------------------------------------------------
+#   platform       spot-od    od           singletons; reclamation restarts the
+#                                          Flux controllers and drops Istio
+#                                          ingress connections (1 replica)
+#   observability  spot-od    od           stateful; reclamation forces a 10Gi
+#                                          EBS reattach in the same AZ and
+#                                          leaves a gap in the scrape record
+#   apps           spot-od    spot-od      unchanged - dev/stage tolerate it
+#   burst          spot       spot         unchanged - the work is retryable
+#
+# What the deviation buys: roughly 55% off the EC2 rate on the two pools that
+# never scale to zero, which is where a small always-on cluster spends most of
+# its money. Measured, not assumed - see PRICES below.
+#
+# What makes it survivable: the controller runs with interruptionQueue
+# "u25c-shared", so Karpenter drains a node on the 2-minute EC2 rebalance
+# notice rather than losing it cold. Spot here means a planned 2-minute drain,
+# not a power cut.
+#
+# Reverting is two lines per pool - set capacity-type to ["on-demand"] and
+# rename the file and metadata.name from -spot-od- back to -od-. If only one
+# pool can be made reliable, make it observability: it is the smallest and the
+# only one holding state.
+#
+# INSTANCE SIZING. The SCP allow-list is wildcarded for the burstable families
+# (t3.*, t3a.*, t4g.*), so sizes below medium are permitted and were considered.
+# The pools stop at medium (2 vCPU / 4Gi) because measured DaemonSet overhead is
+# 130m / 360Mi on every node regardless of size: on a 2Gi small that is 18% of
+# memory gone before a workload starts, against 9% on a medium. Going smaller
+# buys less than it looks like it does.
+#
+# PRICES. Every dollar figure in this folder is a MEASURED us-east-1a spot
+# price from 2026-08-22, not a list price and not an estimate:
+#
+#   aws ec2 describe-spot-price-history --profile u25c --region us-east-1 \
+#     --product-descriptions Linux/UNIX --availability-zone us-east-1a \
+#     --instance-types t4g.medium t3a.medium r5.large ... \
+#     --start-time "$(date -u +%Y-%m-%dT%H:%M:%S)" \
+#     --query 'SpotPriceHistory[].[InstanceType,SpotPrice]' --output text
+#
+# Re-run it before quoting any of these numbers - spot moves. Two findings from
+# the measurement that contradict the usual rules of thumb:
+#
+#   1. Spot is 35-61% of on-demand here, averaging ~45%. The common "spot is a
+#      third of on-demand" figure understates real cost by roughly 40%.
+#   2. The spot discount is NOT uniform across families, so the on-demand price
+#      ordering is not the spot price ordering. Anything chosen by comparing
+#      list prices needs re-checking against spot.
+#
+# Cheapest fit per pool as measured: $12.99/mo (t4g.medium) for platform,
+# observability and burst; $13.14/mo (t3.medium) for apps, which is amd64-only.
+# Those are
+# per-node floors, not total spend - and the two managed-node-group t3.medium
+# nodes run 24/7 on ON-DEMAND regardless, which is a terraform-side cost this
+# repo cannot touch.
+#
+# GRAVITON. platform, observability and burst are mixed arm64 + amd64. Every
+# image those pools run was checked with docker manifest inspect and ships a
+# linux/arm64 variant. The three EKS managed add-on images (amazon-k8s-cni,
+# kube-proxy, aws-ebs-csi-driver) sit in a private ECR that could not be read
+# at the time of writing; they are assumed arm64 because EKS supports Graviton
+# node groups, which would be impossible otherwise. If an arm64 node ever comes
+# up NotReady, check those three first.
+#
+# Karpenter's own controller and CoreDNS stay on the managed node group, which
+# is the bootstrap floor. See dev-u25c-np-platform-spot-od-use1.yaml for why.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - dev-u25c-nc-shared-use1.yaml
+  - dev-u25c-np-platform-spot-od-use1.yaml
+  - dev-u25c-np-observability-spot-od-use1.yaml
+  - dev-u25c-np-apps-biz-spot-od-use1.yaml
+  - dev-u25c-np-burst-spot-use1.yaml
+labels:
+  - pairs:
+      kustomize.toolkit.fluxcd.io/prune: enabled
