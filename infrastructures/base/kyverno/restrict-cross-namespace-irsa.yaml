@@ -1,0 +1,33 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: restrict-cross-namespace-irsa
+  annotations:
+    policies.kyverno.io/title: Restrict Cross-Namespace IRSA
+    policies.kyverno.io/category: Workload Identity
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/description: >-
+      A ServiceAccount's eks.amazonaws.com/role-arn must name an IAM role
+      scoped to that ServiceAccount's own namespace. Stops a pod in one
+      namespace (app-dev, say) from being wired to another namespace's or
+      environment's AWS role via IRSA. This is the Kubernetes-side control;
+      the AWS-side control is the `sub` condition on each role's own trust
+      policy in infra-aws.
+spec:
+  # gitops-flux#6 flips this to Enforce, after a full sprint clean.
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: role-arn-must-match-namespace-prefix
+      match:
+        any:
+          - resources:
+              kinds: ["ServiceAccount"]
+      validate:
+        message: >-
+          eks.amazonaws.com/role-arn must reference a role scoped to this
+          namespace: arn:aws:iam::*:role/u25c-{{request.object.metadata.namespace}}-*
+        pattern:
+          metadata:
+            =(annotations):
+              =(eks.amazonaws.com/role-arn): "arn:aws:iam::*:role/u25c-{{request.object.metadata.namespace}}-*"

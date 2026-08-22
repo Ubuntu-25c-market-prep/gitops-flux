@@ -43,3 +43,7 @@
 /infrastructures/dev/25c-shared/istio-base/                  @Ubuntu-25c-market-prep/istio
 /infrastructures/dev/25c-shared/istiod/                      @Ubuntu-25c-market-prep/istio
 /infrastructures/dev/25c-shared/istio-gateway/               @Ubuntu-25c-market-prep/istio
+
+# Security - kyverno, policy-reporter.
+/infrastructures/base/kyverno/                               @Ubuntu-25c-market-prep/security
+/infrastructures/dev/25c-shared/kyverno/                     @Ubuntu-25c-market-prep/security
