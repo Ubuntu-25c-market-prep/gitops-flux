@@ -8,6 +8,7 @@ resources:
   - karpenter.yaml
   - istio.yaml
   - cert-manager.yaml
+  - external-dns.yaml
   - kiali.yaml
   - prometheus-community.yaml
   - eks-charts.yaml
