@@ -27,8 +27,10 @@
 #   above - the pods here are stateful:
 #
 #     buys   r5.large drops from $126/mo on-demand to $35.99/mo spot. Moving
-#            off the r-family entirely to t4g.large takes it to $19.34/mo -
-#            see the instance-type list below, which is the larger saving.
+#            off the r-family entirely - measured usage allows a t4g.medium -
+#            takes it to $12.99/mo. The instance-type list below is where most
+#            of the saving on this pool actually comes from, not the spot
+#            conversion.
 #     costs  On reclamation Prometheus must detach its 10Gi EBS volume and
 #            reattach IN THE SAME AZ. If that AZ has no spot capacity, the
 #            on-demand fallback covers it; if it has none of either, the pod
@@ -101,16 +103,39 @@ spec:
         # on-demand. m6i.xlarge is excluded: at $84.83/mo in us-east-1a it is
         # the single worst value on the allow-list.
         #
-        # NOT going down to a 4Gi medium, deliberately. Prometheus is the one
-        # workload whose real memory use runs well above its request - the TSDB
-        # head block grows with active series - and metrics-server is not
-        # installed on this cluster, so that real number cannot be measured
-        # right now. 8Gi leaves ~7832Mi usable against a 704Mi request. Once
-        # actual usage is visible, adding t3a.medium here is the next saving.
+        # COST-TRADEOFF: the 4Gi mediums ARE included, on measured evidence.
+        #
+        # An earlier revision excluded them, reasoning that Prometheus runs well
+        # above its request - the TSDB head block grows with active series - and
+        # that with no metrics-server installed the real figure could not be
+        # measured. The second half of that was wrong. Prometheus is itself the
+        # measurement, and it will answer the question about its own memory:
+        #
+        #   kubectl exec -n monitoring \
+        #     prometheus-monitoring-kube-prometheus-prometheus-0 -c prometheus \
+        #     -- wget -qO- 'http://localhost:9090/api/v1/query?query=\
+        #        container_memory_working_set_bytes{namespace="monitoring"}'
+        #
+        # Measured 2026-08-22: the prometheus container holds 513 MiB, and the
+        # monitoring namespace 1007 MiB in total, against a 704Mi request. A
+        # t4g.medium leaves 3736Mi usable once DaemonSets are counted - roughly
+        # 7x what Prometheus actually uses - at $12.99/mo against t4g.large's
+        # $19.34.
+        #
+        # The larger sizes stay listed as headroom. Karpenter buys the cheapest
+        # type that FITS, so they cost nothing until active series grow enough
+        # to need them, and this pool is where that growth would show up first.
+        # If Prometheus is OOMKilled, re-run the query above before assuming
+        # the node is at fault - the pod's memory limit binds before the
+        # node's capacity does.
         - key: node.kubernetes.io/instance-type
           operator: In
           values:
-            # arm64 (Graviton) 8Gi tier - cheapest that fits this pool
+            # 4Gi tier - measured sufficient, see above
+            - t4g.medium
+            - t3.medium
+            - t3a.medium
+            # 8Gi tier
             - t4g.large
             - m7g.large
             # amd64 8Gi tier

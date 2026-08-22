@@ -126,8 +126,9 @@
 #      ordering is not the spot price ordering. Anything chosen by comparing
 #      list prices needs re-checking against spot.
 #
-# Cheapest fit per pool as measured: platform and burst $12.99/mo (t4g.medium),
-# observability $19.34/mo (t4g.large), apps $13.14/mo (t3.medium). Those are
+# Cheapest fit per pool as measured: $12.99/mo (t4g.medium) for platform,
+# observability and burst; $13.14/mo (t3.medium) for apps, which is amd64-only.
+# Those are
 # per-node floors, not total spend - and the two managed-node-group t3.medium
 # nodes run 24/7 on ON-DEMAND regardless, which is a terraform-side cost this
 # repo cannot touch.
