@@ -50,6 +50,15 @@
 # pod's volume topology. See the observability pool for why that matters.
 #
 #
+# AVAILABILITY ZONE
+# -----------------
+# Every pool pins nodes to us-east-1b, per ADR 0006 (two AZs of subnets, all
+# node capacity in one). This is not a per-pool tuning decision - it is a
+# platform-wide constraint, and the ADR calls a missing zone requirement "the
+# most likely way this decision silently stops holding". If a fifth pool is
+# added, it needs the same requirement.
+#
+#
 # THE FOUR POOLS
 # --------------
 # Separated by failure tolerance, not by team:
