@@ -17,3 +17,4 @@ resources:
   - teleport.yaml
   - argo.yaml
   - rancher.yaml
+  - elastic.yaml
