@@ -87,6 +87,24 @@ spec:
         - key: kubernetes.io/os
           operator: In
           values: ["linux"]
+        # ADR 0006: all node capacity lives in ONE AZ. Two AZs of subnets exist
+        # because EKS refuses a cluster whose subnets do not span two, but node
+        # capacity is deliberately not spread across them - cross-AZ pod-to-pod
+        # traffic is billed $0.01/GB each way and buys resilience this platform
+        # does not claim.
+        #
+        # The ADR names the omission of this requirement as "the most likely way
+        # this decision silently stops holding": subnetSelectorTerms on the node
+        # class matches tagged subnets in BOTH AZs, so without this the pool
+        # provisions into us-east-1a whenever it is cheaper and quietly
+        # reintroduces the charge.
+        #
+        # us-east-1b and not us-east-1a because that is where the existing EBS
+        # volumes are - prometheus, grafana and teleport. Only alertmanager's
+        # volume is in 1a; see the PR for how that one is handled.
+        - key: topology.kubernetes.io/zone
+          operator: In
+          values: ["us-east-1b"]
         - key: karpenter.sh/capacity-type
           operator: In
           # COST-TRADEOFF: ["on-demand"] is the production setting. See header.
