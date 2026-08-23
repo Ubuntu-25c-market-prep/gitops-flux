@@ -10,6 +10,7 @@ resources:
   - monitoring.yaml
   - keda.yaml
   - teleport.yaml
+  - kyverno.yaml
   - argocd.yaml
   - cattle-system.yaml
   - platform-logging.yaml

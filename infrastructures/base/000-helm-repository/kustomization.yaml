@@ -15,6 +15,7 @@ resources:
   - aws-ebs-csi-driver.yaml
   - keda.yaml
   - teleport.yaml
+  - kyverno.yaml
   - argo.yaml
   - rancher.yaml
   - elastic.yaml
