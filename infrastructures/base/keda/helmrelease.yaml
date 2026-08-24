@@ -21,6 +21,37 @@ spec:
     crds: Create
   upgrade:
     crds: CreateReplace
-  # Core install only - operator + metrics apiserver. No AWS IAM: AWS-based
-  # scalers (SQS depth, CloudWatch) would need an IRSA role added later.
-  values: {}
+  # The operator's IRSA role ARN embeds the AWS account id and this repo is
+  # public, so it is NOT committed. Supplied by an out-of-band ConfigMap, the
+  # same pattern karpenter, external-dns and ebs-csi use:
+  #
+  #   ARN=$(terraform -chdir=infra-aws/keda output -raw operator_role_arn)
+  #   kubectl create configmap keda-irsa -n flux-system \
+  #     --from-literal=values.yaml="serviceAccount:
+  #     operator:
+  #       annotations:
+  #         eks.amazonaws.com/role-arn: ${ARN}"
+  #
+  # optional: false on purpose. Without the annotation the operator falls back
+  # to the node role and every AWS trigger fails with AccessDenied at poll time
+  # - failing the release outright is the louder, better outcome.
+  valuesFrom:
+    - kind: ConfigMap
+      name: keda-irsa
+      valuesKey: values.yaml
+      optional: false
+  values:
+    # The other half of the IRSA contract: the trust policy conditions on
+    # system:serviceaccount:keda:keda-operator, so the name is pinned here
+    # rather than left to the chart's default.
+    #
+    # Note the nesting. The KEDA chart puts per-component service accounts under
+    # serviceAccount.<component>, so the annotation the ConfigMap supplies must
+    # land at serviceAccount.operator.annotations. Written to the top-level
+    # serviceAccount.annotations instead, Helm accepts it and silently ignores
+    # it - the pod comes up with no role and fails at the first poll rather than
+    # at release time.
+    serviceAccount:
+      operator:
+        create: true
+        name: keda-operator
