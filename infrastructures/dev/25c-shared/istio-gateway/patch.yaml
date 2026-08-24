@@ -37,4 +37,4 @@ spec:
         # source instead, which widens its RBAC to Istio CRDs and is a call
         # for the istio workstream to make. See the reasoning already written
         # out in base/external-dns/helmrelease.yaml.
-        external-dns.alpha.kubernetes.io/hostname: rancher.25c-team1.art
+        external-dns.alpha.kubernetes.io/hostname: rancher.25c-team1.art,storefront.25c-team1.art
