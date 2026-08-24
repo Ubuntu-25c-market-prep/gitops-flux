@@ -1,0 +1,31 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: istio-cni
+  namespace: flux-system
+spec:
+  chart:
+    spec:
+      chart: cni
+      version: "1.30.3"
+      sourceRef:
+        kind: HelmRepository
+        name: istio
+        namespace: flux-system
+  interval: 1h0m0s
+  targetNamespace: platform-istio
+  releaseName: istio-cni
+  install:
+    createNamespace: true
+  # Doesn't consume istiod's CRDs or webhooks - the CNI plugin only needs the
+  # namespace and cluster-scoped resources istio-base creates. No dependency
+  # on istiod itself, unlike istio-gateway.
+  dependsOn:
+    - name: istio-base
+      namespace: flux-system
+  values:
+    # Must match every other Istio component's global.istioNamespace - see
+    # istio-base/helmrelease.yaml for why this can't be left as the chart
+    # default.
+    global:
+      istioNamespace: platform-istio

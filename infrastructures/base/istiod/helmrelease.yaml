@@ -27,9 +27,32 @@ spec:
     - name: istio-base
       namespace: flux-system
   values:
-    # Must match istio-base's global.istioNamespace exactly - istiod uses
-    # this to find its own webhook/CRD configuration, not just to locate
-    # itself. Every future Istio component (gateway, Kiali) needs the same
-    # value.
     global:
+      # Must match istio-base's global.istioNamespace exactly - istiod uses
+      # this to find its own webhook/CRD configuration, not just to locate
+      # itself. Every future Istio component (gateway, Kiali) needs the same
+      # value.
       istioNamespace: platform-istio
+
+    # NOT global.cni.enabled - that key exists in this chart too but the
+    # sidecar-injection template actually reads .Values.pilot.cni.enabled,
+    # which only gets set by this TOP-LEVEL `cni` key (the chart copies it
+    # into both `global.cni` and `pilot.cni` internally). Confirmed by
+    # rendering the chart locally and grepping the baked-in injector
+    # ConfigMap values, not assumed from the values.yaml comment - the
+    # wrong nesting silently changes nothing and leaves istio-init in place.
+    #
+    # Chart default is false, which makes the injection webhook render an
+    # istio-init init container that needs NET_ADMIN/NET_RAW to set up
+    # iptables redirection itself. app-dev (and every future app-<name>
+    # namespace) enforces Pod Security "baseline", which rejects those
+    # capabilities outright - confirmed via a real FailedCreate event, not
+    # assumed. Setting this to true switches the injection template to
+    # istio-validation instead, which expects the istio-cni DaemonSet
+    # (infrastructures/base/istio-cni) to have already configured the pod's
+    # networking before the workload container starts.
+    #
+    # This alone does nothing without istio-cni actually installed and
+    # running - the two ship together, not in either order alone.
+    cni:
+      enabled: true

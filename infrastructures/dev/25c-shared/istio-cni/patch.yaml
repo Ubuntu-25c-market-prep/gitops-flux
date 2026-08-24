@@ -1,0 +1,13 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: istio-cni
+  namespace: flux-system
+spec:
+  values:
+    # Must match istiod's revision (infrastructures/dev/25c-shared/istiod/
+    # patch.yaml) - a CNI plugin for a different revision than the one
+    # actually running would install its config but never get used by any
+    # injected pod, which points at this specific revision's inject
+    # annotation.
+    revision: "1-30-3"
