@@ -18,7 +18,7 @@ resources:
   # Business application environments (gitops-flux#8). Each file carries its
   # Namespace, its ResourceQuota and its LimitRange, because they are one
   # decision. Argo CD deploys into these; Flux owns the namespaces themselves
-  # (ADR 0012).
+  # (ADR 0013).
   - app-dev.yaml
   - app-stage.yaml
   - app-prod.yaml

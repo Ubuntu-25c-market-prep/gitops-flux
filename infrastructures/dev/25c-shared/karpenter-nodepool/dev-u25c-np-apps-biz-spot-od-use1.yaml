@@ -5,8 +5,8 @@
 # see ADR 0002 (one cluster, environments as namespaces) and ADR 0010 (one
 # repository per delivery boundary).
 #
-# NOT ADR 0012, which is what an earlier revision of this file cited. There is
-# no ADR 0012 - the index stops at 0011.
+# NOT ADR 0013, which is what an earlier revision of this file cited. There is
+# no ADR 0013 - the index stops at 0011.
 #
 # The only UNTAINTED pool, and therefore the default landing zone: a pod that
 # expresses no scheduling preference at all ends up here rather than being
