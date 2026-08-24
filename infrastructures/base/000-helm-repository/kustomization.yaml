@@ -19,3 +19,4 @@ resources:
   - argo.yaml
   - rancher.yaml
   - elastic.yaml
+  - metrics-server.yaml

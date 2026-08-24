@@ -1,0 +1,37 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: metrics-server
+  namespace: flux-system
+spec:
+  values:
+    # Sized against what this cluster actually is, not chart defaults. The chart
+    # asks for 100m CPU; measured cluster-wide CPU requests already run ~5x p95
+    # usage, and metrics-server on 3 nodes / ~60 pods uses single-digit millicores.
+    #
+    # Memory is NOT trimmed the same way. Cluster memory requests currently equal
+    # peak usage - there is no headroom, and several components already peak above
+    # their request. metrics-server's memory scales with node and pod count, so it
+    # gets room to grow rather than a tight fit.
+    #
+    # Memory limit only, no CPU limit - house pattern, avoids throttling a
+    # latency-sensitive component.
+    resources:
+      requests:
+        cpu: 25m
+        memory: 96Mi
+      limits:
+        memory: 192Mi
+
+    # Left at the chart default of 1 replica, and the PDB deliberately disabled.
+    #
+    # A minAvailable PDB on a single-replica Deployment permits ZERO voluntary
+    # evictions, which deadlocks Karpenter consolidation and spot drain and
+    # presents as Karpenter being broken. If metrics-server is ever made
+    # highly available, raise replicas to 2 FIRST, then enable the PDB with
+    # maxUnavailable - never minAvailable at one replica.
+    podDisruptionBudget:
+      enabled: false
+
+    podLabels:
+      environment: dev
