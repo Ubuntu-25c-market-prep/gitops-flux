@@ -1,0 +1,5 @@
+# gitops-flux/infrastructures/base/kyverno-policies
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - restrict-cross-namespace-irsa.yaml
