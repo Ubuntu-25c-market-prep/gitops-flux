@@ -18,3 +18,4 @@ resources:
   - kyverno.yaml
   - argo.yaml
   - rancher.yaml
+  - elastic.yaml

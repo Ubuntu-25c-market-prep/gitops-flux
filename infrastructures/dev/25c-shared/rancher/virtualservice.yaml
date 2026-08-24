@@ -32,9 +32,20 @@ spec:
             host: rancher.cattle-system.svc.cluster.local
             port:
               number: 80
-      # Envoy's default route timeout is 15 seconds. Rancher's UI holds long
-      # websocket connections for live cluster state, and its agents hold
-      # long-lived tunnels - all of which would be cut every 15s, showing up as
-      # a UI that constantly reconnects rather than as an obvious error.
-      # 0s disables the timeout for this route only.
-      timeout: 0s
+      # NO `timeout` field here, deliberately.
+      #
+      # Rancher's UI holds long websocket connections for live cluster state and
+      # its agents hold long-lived tunnels, so this route must not impose a
+      # request timeout. Istio's default already gives that: the API reference
+      # states "Timeout for HTTP requests, default is disabled" - omitting the
+      # field is how you get no timeout.
+      #
+      # Do NOT write `timeout: 0s` to express that. Istio's CRD validation
+      # rejects it outright:
+      #
+      #   spec.http[0].timeout: Invalid value: "string": must be a valid
+      #   duration greater than 1ms
+      #
+      # and because a resource that fails dry-run rejects the ENTIRE
+      # Kustomization, that one line stops every workstream's changes - the
+      # same failure shape as #110 and #93.

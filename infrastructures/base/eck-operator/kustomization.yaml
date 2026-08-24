@@ -1,6 +1,5 @@
-# gitops-flux/infrastructures/base/kiali
+# gitops-flux/infrastructures/base/eck-operator
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - helmrelease.yaml
-  - podmonitor-istio-envoy-stats.yaml
