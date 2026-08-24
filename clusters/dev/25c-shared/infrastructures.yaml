@@ -11,12 +11,3 @@ spec:
   sourceRef:
     kind: GitRepository
     name: flux-system
-  # kyverno-policies/ is reconciled by its own "kyverno-policies" Kustomization
-  # instead (dependsOn + healthChecks on the kyverno HelmRelease, to avoid a
-  # CRD-ordering race - see clusters/dev/25c-shared/kyverno-policies.yaml).
-  # Without this, the root kustomization.yaml that kustomize-controller
-  # auto-generates for this path (there's no committed one - see README) would
-  # sweep the directory into this aggregate build too, and both Kustomizations
-  # would end up managing the same ClusterPolicy objects.
-  ignore: |
-    /kyverno-policies/
