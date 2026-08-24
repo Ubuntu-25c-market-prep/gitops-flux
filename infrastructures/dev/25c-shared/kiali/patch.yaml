@@ -17,6 +17,15 @@ spec:
         # Repoint to the real platform Prometheus service the day it ships
         # - do not leave this as-is past that point.
         url: "http://kube-prometheus-stack-prometheus.lab-observability.svc.cluster.local:9090"
+      grafana:
+        # internal_url only, deliberately no external_url - Grafana isn't
+        # exposed outside the cluster (same "internal-only for now" call as
+        # Kiali itself), so a clickable "open in Grafana" link would just
+        # point at something the browser can't reach. This still fixes the
+        # UI warning and lets Kiali's backend query Grafana's version.
+        # Same temporary-lab-dependency caveat as prometheus.url above.
+        enabled: true
+        internal_url: "http://kube-prometheus-stack-grafana.lab-observability.svc.cluster.local:80"
     auth:
       # Not exposed outside the cluster - no VirtualService routes to this
       # yet, only reachable via `kubectl port-forward`. Revisit before ever

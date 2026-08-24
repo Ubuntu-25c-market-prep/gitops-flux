@@ -1,0 +1,86 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: kube-prometheus-stack
+  namespace: flux-system
+spec:
+  timeout: 15m
+  chart:
+    spec:
+      chart: kube-prometheus-stack
+      version: "72.6.2"
+      sourceRef:
+        kind: HelmRepository
+        name: prometheus-community
+        namespace: flux-system
+  interval: 20h0m0s
+  install:
+    createNamespace: true
+    crds: CreateReplace
+    remediation:
+      retries: 3
+  upgrade:
+    crds: CreateReplace
+    remediation:
+      retries: 3
+  targetNamespace: monitoring
+  # The Thanos sidecar's IRSA role ARN embeds the AWS account id, and this repo
+  # is public, so it is NOT committed. It is supplied by an out-of-band ConfigMap
+  # (prometheus-irsa) in flux-system, created from the terraform output:
+  #
+  #   ARN=$(terraform -chdir=infra-aws/thanos output -raw thanos_role_arn)
+  #   kubectl create configmap prometheus-irsa -n flux-system \
+  #     --from-literal=values.yaml="prometheus:
+  #     serviceAccount:
+  #       annotations:
+  #         eks.amazonaws.com/role-arn: ${ARN}"
+  #
+  # valuesFrom merges after spec.values, so this only sets the SA annotation.
+  valuesFrom:
+    - kind: ConfigMap
+      name: prometheus-irsa
+      valuesKey: values.yaml
+  values:
+    prometheus:
+      prometheusSpec:
+        retention: 15d
+        thanos:
+          objectStorageConfig:
+            existingSecret:
+              name: thanos-objstore-secret
+              key: objstore.yml
+        storageSpec:
+          volumeClaimTemplate:
+            spec:
+              accessModes:
+                - ReadWriteOnce
+              resources:
+                requests:
+                  storage: 20Gi
+        serviceMonitorSelectorNilUsesHelmValues: false
+        podMonitorSelectorNilUsesHelmValues: false
+        ruleSelectorNilUsesHelmValues: false
+    grafana:
+      persistence:
+        enabled: true
+        size: 5Gi
+        accessModes:
+          - ReadWriteOnce
+      sidecar:
+        dashboards:
+          enabled: true
+          searchNamespace: ALL
+    alertmanager:
+      alertmanagerSpec:
+        storage:
+          volumeClaimTemplate:
+            spec:
+              accessModes:
+                - ReadWriteOnce
+              resources:
+                requests:
+                  storage: 5Gi
+    nodeExporter:
+      enabled: true
+    kubeStateMetrics:
+      enabled: true

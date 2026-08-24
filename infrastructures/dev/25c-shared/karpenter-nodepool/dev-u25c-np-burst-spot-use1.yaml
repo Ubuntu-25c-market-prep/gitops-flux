@@ -1,0 +1,130 @@
+# gitops-flux/infrastructures/dev/25c-shared/karpenter-nodepool/dev-u25c-np-burst-spot-use1.yaml
+#
+# Interruption-tolerant work: KEDA-scaled consumers, Jobs and CronJobs, ETL,
+# media/image processing, anything whose failure mode is "retry it".
+#
+# This pool exists because KEDA 2.20.2 is already installed and currently has
+# nothing to do. Scale-to-zero workers are the textbook case for spot: the work
+# is queue-driven and idempotent, so a reclaimed node costs a retry rather than
+# an error budget. Keeping that traffic off the `apps` pool also stops a batch
+# spike from competing for nodes with request-serving pods.
+#
+# Spot ONLY - no on-demand fallback. If spot capacity is unavailable, the right
+# outcome is that the queue drains more slowly, not that the account is billed
+# on-demand rates for background work.
+apiVersion: karpenter.sh/v1
+kind: NodePool
+metadata:
+  name: dev-u25c-np-burst-spot-use1
+spec:
+  template:
+    metadata:
+      labels:
+        u25c.io/pool: burst
+    spec:
+      nodeClassRef:
+        group: karpenter.k8s.aws
+        kind: EC2NodeClass
+        name: dev-u25c-nc-shared-use1
+
+      taints:
+        - key: u25c.io/pool
+          value: burst
+          effect: NoSchedule
+
+      expireAfter: 720h
+
+      requirements:
+        # COST-TRADEOFF: Graviton (arm64) is allowed alongside amd64, and
+        # Karpenter buys whichever is cheaper for the pending pods. t4g is
+        # ~11% under the t3a equivalent before Graviton's price/performance
+        # advantage is counted.
+        #
+        # Safe here ONLY because every image in this pool was checked and ships
+        # an arm64 variant (docker manifest inspect, all linux/arm64 present).
+        # A mixed-arch pool with an amd64-only image produces "exec format
+        # error" CrashLoopBackOff, which is a miserable thing to debug - so
+        # re-check before adding a workload to this pool.
+        - key: kubernetes.io/arch
+          operator: In
+          values: ["arm64", "amd64"]
+        - key: kubernetes.io/os
+          operator: In
+          values: ["linux"]
+        # ADR 0006: all node capacity lives in ONE AZ. Two AZs of subnets exist
+        # because EKS refuses a cluster whose subnets do not span two, but node
+        # capacity is deliberately not spread across them - cross-AZ pod-to-pod
+        # traffic is billed $0.01/GB each way and buys resilience this platform
+        # does not claim.
+        #
+        # The ADR names the omission of this requirement as "the most likely way
+        # this decision silently stops holding": subnetSelectorTerms on the node
+        # class matches tagged subnets in BOTH AZs, so without this the pool
+        # provisions into us-east-1a whenever it is cheaper and quietly
+        # reintroduces the charge.
+        #
+        # us-east-1b and not us-east-1a because that is where the existing EBS
+        # volumes are - prometheus, grafana and teleport. Only alertmanager's
+        # volume is in 1a; see the PR for how that one is handled.
+        - key: topology.kubernetes.io/zone
+          operator: In
+          values: ["us-east-1b"]
+        - key: karpenter.sh/capacity-type
+          operator: In
+          values: ["spot"]
+        # Wide for the same spot-diversity reason as the apps pool. Karpenter
+        # picks on price, not on the order of this list.
+        #
+        # COST-TRADEOFF, and the one place "smaller is cheaper" can backfire.
+        # The T-family is burstable: a t3a.medium earns CPU credits at a
+        # baseline of 20% of 2 vCPU (~0.4 vCPU sustained). Batch and ETL work is
+        # exactly the sustained-CPU profile that exhausts credits, and past that
+        # point a T instance either throttles hard (standard mode) or bills a
+        # per-vCPU-hour surcharge on top of the sticker price (unlimited mode,
+        # which is the EC2 default for T3). A job that runs 3x longer on a node
+        # costing half as much is not a saving.
+        #
+        # So the mediums ARE listed - a short, bursty job finishes inside its
+        # credit balance and they are genuinely the cheapest thing that fits -
+        # but the c-family is kept alongside them precisely for the sustained
+        # case. If jobs here start running long, check CPU credit balance before
+        # concluding the node is too small.
+        - key: node.kubernetes.io/instance-type
+          operator: In
+          values:
+            # arm64 (Graviton). m7g is the sustained-CPU escape hatch here -
+            # non-burstable, so no credit balance to exhaust.
+            - t4g.medium
+            - t4g.large
+            - m7g.large
+            - m7g.xlarge
+            # amd64
+            - t3a.medium
+            - t3.medium
+            - t3a.large
+            - c5.large
+            - c6i.large
+            - m5.large
+            - m6i.large
+            - c5.xlarge
+            - c6i.xlarge
+            - m5.xlarge
+            - m6i.xlarge
+
+  disruption:
+    consolidationPolicy: WhenEmptyOrUnderutilized
+    # Aggressive on purpose. When the queue drains, these nodes should disappear
+    # in about a minute rather than idle at spot prices until the next spike.
+    #
+    # Note the controller runs with SpotToSpotConsolidation=false (the chart
+    # default), so Karpenter will not churn one spot node into a cheaper spot
+    # node - it only removes empty or underutilised ones.
+    consolidateAfter: 1m
+    budgets:
+      # No throttle. The work here is retryable by definition, so there is
+      # nothing to protect by disrupting slowly.
+      - nodes: "100%"
+
+  limits:
+    cpu: "16"
+    memory: 64Gi

@@ -1,0 +1,152 @@
+# gitops-flux/infrastructures/dev/25c-shared/karpenter-nodepool/dev-u25c-np-apps-biz-spot-od-use1.yaml
+#
+# Business applications: the app-dev, app-stage and app-prod namespaces that
+# Argo CD deploys into. Flux owns the namespaces, Argo owns what runs in them -
+# see ADR 0002 (one cluster, environments as namespaces) and ADR 0010 (one
+# repository per delivery boundary).
+#
+# NOT ADR 0012, which is what an earlier revision of this file cited. There is
+# no ADR 0012 - the index stops at 0011.
+#
+# The only UNTAINTED pool, and therefore the default landing zone: a pod that
+# expresses no scheduling preference at all ends up here rather than being
+# unschedulable. That is deliberate - app teams should not need to know this
+# file exists to get a node.
+#
+# CAPACITY TYPE. This pool offers both spot and on-demand, and Karpenter will
+# prefer spot because it is cheaper. app-prod is not exempted here, because a
+# NodePool cannot select by namespace - the only mechanism is a pod-level
+# nodeSelector:
+#
+#     nodeSelector:
+#       karpenter.sh/capacity-type: on-demand
+#
+# That selector belongs on the app-prod workloads, which live in the Argo CD
+# repository, not this one. Until it is set there, app-prod can land on spot.
+# This is a known, accepted gap - see the PR discussion.
+apiVersion: karpenter.sh/v1
+kind: NodePool
+metadata:
+  name: dev-u25c-np-apps-biz-spot-od-use1
+spec:
+  # Higher weight than the other three pools. Weight breaks ties when a pod
+  # matches more than one NodePool - e.g. a pod that tolerates the platform
+  # taint but sets no nodeSelector. Preferring `apps` in that case keeps
+  # accidents off the control-plane nodes.
+  weight: 10
+
+  template:
+    metadata:
+      labels:
+        u25c.io/pool: apps
+    spec:
+      nodeClassRef:
+        group: karpenter.k8s.aws
+        kind: EC2NodeClass
+        name: dev-u25c-nc-shared-use1
+
+      # No taints - see the header.
+
+      expireAfter: 720h
+
+      requirements:
+        # COST-TRADEOFF, NOT TAKEN: this is the one pool left amd64-only, and
+        # it is deliberate. The other three run platform images whose arm64
+        # variants were verified; this pool runs whatever Argo CD deploys into
+        # app-dev/stage/prod, which is student-built and most likely amd64-only
+        # (a default GitHub Actions runner and an Intel Mac both produce amd64).
+        # An arm64 node under an amd64-only image fails as "exec format error"
+        # in CrashLoopBackOff - a genuinely confusing error to hit while
+        # learning, and it would look like a platform fault rather than a build
+        # one.
+        #
+        # To take the ~11% Graviton saving here: confirm the app images publish
+        # linux/arm64 (docker manifest inspect <image>), then add "arm64" below
+        # and t4g.medium / t4g.large / m7g.large to the instance-type list.
+        - key: kubernetes.io/arch
+          operator: In
+          values: ["amd64"]
+        - key: kubernetes.io/os
+          operator: In
+          values: ["linux"]
+        # ADR 0006: all node capacity lives in ONE AZ. Two AZs of subnets exist
+        # because EKS refuses a cluster whose subnets do not span two, but node
+        # capacity is deliberately not spread across them - cross-AZ pod-to-pod
+        # traffic is billed $0.01/GB each way and buys resilience this platform
+        # does not claim.
+        #
+        # The ADR names the omission of this requirement as "the most likely way
+        # this decision silently stops holding": subnetSelectorTerms on the node
+        # class matches tagged subnets in BOTH AZs, so without this the pool
+        # provisions into us-east-1a whenever it is cheaper and quietly
+        # reintroduces the charge.
+        #
+        # us-east-1b and not us-east-1a because that is where the existing EBS
+        # volumes are - prometheus, grafana and teleport. Only alertmanager's
+        # volume is in 1a; see the PR for how that one is handled.
+        - key: topology.kubernetes.io/zone
+          operator: In
+          values: ["us-east-1b"]
+        # Spot first, on-demand as the fallback Karpenter uses when spot is
+        # unavailable in an AZ. Spot interruption is handled: the controller is
+        # configured with interruptionQueue "u25c-shared", so it drains a node
+        # on the 2-minute rebalance notice rather than losing it cold.
+        - key: karpenter.sh/capacity-type
+          operator: In
+          values: ["spot", "on-demand"]
+        # A deliberately WIDE list. Spot allocation improves with the number of
+        # distinct instance pools Karpenter can bid across, so most of the SCP
+        # allow-list is included. Narrowing this to a favourite type is the most
+        # common way to make a spot pool fall back to on-demand permanently.
+        #
+        # COST-TRADEOFF: t3a.medium / t3.medium lead the list. They are the SCP
+        # floor at 2 vCPU / 4Gi, ~$9/mo spot. The app namespaces are quota'd far
+        # below that already - app-prod allows 6 pods, 1 CPU and 1Gi of requests
+        # in total - so a medium holds an entire environment with room to spare.
+        #
+        # c5.large / c6i.large look like bad value on today's prices - 2 vCPU /
+        # 4Gi at $22.85 and $28.18/mo against t3a.medium's $13.87 for the same
+        # capacity - and an earlier revision of this file dropped them for that
+        # reason. They are back, deliberately.
+        #
+        # Pruning a SPOT pool by price is a mistake. Karpenter re-evaluates at
+        # every provisioning decision and buys the cheapest type that fits, so
+        # an expensive entry costs nothing while it stays expensive. What a
+        # short list does cost is capacity: if the two or three cheap types are
+        # unavailable in an AZ, a narrow pool falls back to on-demand or simply
+        # fails to launch. Breadth is insurance, and spot prices move - the
+        # ordering above is a snapshot, not a property of the instance.
+        #
+        # The xlarges stay. Karpenter buys the cheapest type that FITS, and when
+        # enough pods are pending, one xlarge is often cheaper than three
+        # mediums - consolidation needs that option to exist.
+        - key: node.kubernetes.io/instance-type
+          operator: In
+          values:
+            - t3a.medium
+            - t3.medium
+            - t3a.large
+            - t3.large
+            - m5.large
+            - m6i.large
+            - c5.large
+            - c6i.large
+            - t3a.xlarge
+            - t3.xlarge
+            - m5.xlarge
+            - m6i.xlarge
+
+  disruption:
+    consolidationPolicy: WhenEmptyOrUnderutilized
+    # 5m, not 1m. One minute is short enough that a rolling update's surge pods
+    # can trigger a consolidation that then has to be undone.
+    consolidateAfter: 5m
+    budgets:
+      # Percentage rather than a fixed count, so the blast radius stays
+      # proportional as the pool grows. Rounds up, so on a 2-node pool this is
+      # still 1.
+      - nodes: "20%"
+
+  limits:
+    cpu: "16"
+    memory: 64Gi

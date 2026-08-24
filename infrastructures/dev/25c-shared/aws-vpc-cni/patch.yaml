@@ -1,0 +1,20 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: aws-vpc-cni
+  namespace: flux-system
+spec:
+  values:
+    # Cluster-specific env the EKS managed add-on injected and the chart does
+    # not render. Without these, adopting the DaemonSet DELETES them: the CNI
+    # loses subnet discovery (VPC_ID) and its direct path to the API server
+    # (CLUSTER_ENDPOINT), and every node rolls.
+    #
+    # None of these carry the AWS account id, so they are safe in a public repo.
+    # They live in the dev overlay rather than base because they name this
+    # cluster and this VPC.
+    env:
+      ANNOTATE_POD_IP: "false"
+      CLUSTER_NAME: u25c-shared
+      VPC_ID: vpc-0da5d57861df488c9
+      CLUSTER_ENDPOINT: https://5AF0D8FA0A9E8ADF530ADD9BEB96A367.gr7.us-east-1.eks.amazonaws.com

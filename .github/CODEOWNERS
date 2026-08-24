@@ -10,21 +10,43 @@
 # /infrastructures/dev/<cluster>/<component>/ (per-cluster overlays).
 # Ownership follows the component, not the tree.
 
+# Fallback, FIRST on purpose. In CODEOWNERS the LAST matching pattern wins,
+# so a `*` line at the bottom of the file silently overrides every specific
+# rule below it - which is what this file did until #106: PRs touching only
+# /infrastructures/base/cert-manager/ were routed to @flux and @cto, never
+# to @utils, and every workstream had been adding its own reviewers by hand
+# to compensate. Keep this line above the per-component rules.
+*                                                            @Ubuntu-25c-market-prep/flux @Ubuntu-25c-market-prep/cto
+
 # Flux delivery objects - bootstrap, sources, cluster Kustomizations.
 /clusters/                                                   @Ubuntu-25c-market-prep/flux
 /infrastructures/base/000-helm-repository/                   @Ubuntu-25c-market-prep/flux
 /infrastructures/dev/25c-shared/flux-system/                 @Ubuntu-25c-market-prep/flux
 /infrastructures/dev/25c-shared/000-cluster-wide-resources/  @Ubuntu-25c-market-prep/flux
 
-# Utils - sealed-secrets, cert-manager.
+# Utils - sealed-secrets, cert-manager, external-dns.
 /infrastructures/base/sealed-secrets/                        @Ubuntu-25c-market-prep/utils
 /infrastructures/dev/25c-shared/sealed-secrets/              @Ubuntu-25c-market-prep/utils
 /infrastructures/base/cert-manager/                          @Ubuntu-25c-market-prep/utils
 /infrastructures/dev/25c-shared/cert-manager/                @Ubuntu-25c-market-prep/utils
+/infrastructures/base/external-dns/                          @Ubuntu-25c-market-prep/utils
+/infrastructures/dev/25c-shared/external-dns/                @Ubuntu-25c-market-prep/utils
 
 # Scaling - karpenter.
+#
+# karpenter-nodepool/ is a THIRD directory, not a typo. The NodePool and
+# EC2NodeClass custom resources cannot live beside the controller's HelmRelease:
+# they depend on CRDs that HelmRelease installs, so they are applied as a
+# separate step once the controller is Ready. Without a rule of its own that
+# directory falls through to the `*` fallback and lands on @flux and @cto -
+# which is exactly what happened on #107.
 /infrastructures/base/karpenter/                             @Ubuntu-25c-market-prep/scaling
 /infrastructures/dev/25c-shared/karpenter/                   @Ubuntu-25c-market-prep/scaling
+/infrastructures/dev/25c-shared/karpenter-nodepool/          @Ubuntu-25c-market-prep/scaling
+
+# Logging - EFK stack (ECK operator now; Elasticsearch, Fluent Bit, Kibana follow).
+/infrastructures/base/eck-operator/                          @Ubuntu-25c-market-prep/logging
+/infrastructures/dev/25c-shared/eck-operator/                @Ubuntu-25c-market-prep/logging
 
 # Mesh - istio.
 /infrastructures/base/istio-base/                            @Ubuntu-25c-market-prep/istio
@@ -34,4 +56,6 @@
 /infrastructures/dev/25c-shared/istiod/                      @Ubuntu-25c-market-prep/istio
 /infrastructures/dev/25c-shared/istio-gateway/               @Ubuntu-25c-market-prep/istio
 
-*                                                            @Ubuntu-25c-market-prep/flux @Ubuntu-25c-market-prep/cto
+# Security - kyverno, policy-reporter.
+/infrastructures/base/kyverno/                               @Ubuntu-25c-market-prep/security
+/infrastructures/dev/25c-shared/kyverno/                     @Ubuntu-25c-market-prep/security

@@ -1,0 +1,167 @@
+# gitops-flux/infrastructures/dev/25c-shared/karpenter-nodepool/dev-u25c-np-platform-spot-od-use1.yaml
+#
+# The always-on platform control plane: Flux's six controllers, cert-manager,
+# external-dns, sealed-secrets, KEDA, Teleport, the EBS CSI controller and the
+# Istio control plane and ingress gateway.
+#
+# Spot first, on-demand as the fallback.
+#
+# COST-TRADEOFF (deliberate deviation - write this up in the docs):
+#   The production-correct setting for this pool is on-demand ONLY. Every
+#   workload in this class is a singleton or a two-replica deployment whose loss
+#   is a cluster-wide outage, not a degraded request, and a spot reclamation of
+#   the node running kustomize-controller and istiod at 03:00 is not normally a
+#   trade worth the ~55% saving measured on these types.
+#
+#   This is a school project on a shared dev cluster, so cost wins and the pool
+#   takes spot first. What that actually buys and costs:
+#
+#     buys   ~55% off the on-demand rate (measured: spot runs 35-61% of
+#            on-demand across the allow-list, averaging ~45% OF it) on the
+#            pool that never scales to zero and therefore dominates the bill.
+#            In absolute terms the floor is $12.99/mo per node.
+#     costs  On reclamation Flux controllers lose leader election and restart,
+#            and reconciliation pauses for the ~1-2 min it takes Karpenter to
+#            replace the node. Nothing is lost - Flux is level-triggered and
+#            re-reconciles from Git - but an in-flight HelmRelease upgrade can
+#            be retried. Istio ingress drops connections unless the gateway is
+#            running more than one replica; it is currently at 1.
+#
+#   To revert for production: set values to ["on-demand"] below and rename this
+#   file and its metadata.name back to dev-u25c-np-platform-od-use1.
+#
+# Spot interruption itself is handled - the controller runs with
+# interruptionQueue "u25c-shared", so it drains on the 2-minute rebalance notice
+# rather than losing the node cold.
+#
+# NOTE: Karpenter's own controller and CoreDNS deliberately do NOT belong here.
+# They stay on the managed node group, which is the bootstrap floor - if
+# Karpenter ran only on Karpenter-managed nodes and consolidation removed the
+# last one, nothing would exist to launch its replacement.
+apiVersion: karpenter.sh/v1
+kind: NodePool
+metadata:
+  name: dev-u25c-np-platform-spot-od-use1
+spec:
+  template:
+    metadata:
+      labels:
+        u25c.io/pool: platform
+    spec:
+      nodeClassRef:
+        group: karpenter.k8s.aws
+        kind: EC2NodeClass
+        name: dev-u25c-nc-shared-use1
+
+      # Opt-in only. Nothing lands here without both the nodeSelector and the
+      # matching toleration, so this pool stays empty until a workload is
+      # explicitly moved onto it.
+      taints:
+        - key: u25c.io/pool
+          value: platform
+          effect: NoSchedule
+
+      # Rotate every 30 days to pick up patched AL2023 AMIs.
+      expireAfter: 720h
+
+      requirements:
+        # COST-TRADEOFF: Graviton (arm64) is allowed alongside amd64, and
+        # Karpenter buys whichever is cheaper for the pending pods.
+        #
+        # Be careful how much is claimed for Graviton here. On ON-DEMAND list
+        # price t4g.medium is ~11% under t3a.medium. On SPOT - which is what
+        # this pool actually buys - the measured gap is about 1%: t4g.medium
+        # $0.0178/hr against t3.medium $0.0180. The t-family amd64 types simply
+        # carry a deeper spot discount, which erases most of the advantage. The
+        # real Graviton win is one size up, where t4g.large ($19.34/mo) sits 17%
+        # under t3a.large ($23.36/mo).
+        #
+        # Safe here ONLY because every image in this pool was checked and ships
+        # an arm64 variant (docker manifest inspect, all linux/arm64 present).
+        # A mixed-arch pool with an amd64-only image produces "exec format
+        # error" CrashLoopBackOff, which is a miserable thing to debug - so
+        # re-check before adding a workload to this pool.
+        - key: kubernetes.io/arch
+          operator: In
+          values: ["arm64", "amd64"]
+        - key: kubernetes.io/os
+          operator: In
+          values: ["linux"]
+        # ADR 0006: all node capacity lives in ONE AZ. Two AZs of subnets exist
+        # because EKS refuses a cluster whose subnets do not span two, but node
+        # capacity is deliberately not spread across them - cross-AZ pod-to-pod
+        # traffic is billed $0.01/GB each way and buys resilience this platform
+        # does not claim.
+        #
+        # The ADR names the omission of this requirement as "the most likely way
+        # this decision silently stops holding": subnetSelectorTerms on the node
+        # class matches tagged subnets in BOTH AZs, so without this the pool
+        # provisions into us-east-1a whenever it is cheaper and quietly
+        # reintroduces the charge.
+        #
+        # us-east-1b and not us-east-1a because that is where the existing EBS
+        # volumes are - prometheus, grafana and teleport. Only alertmanager's
+        # volume is in 1a; see the PR for how that one is handled.
+        - key: topology.kubernetes.io/zone
+          operator: In
+          values: ["us-east-1b"]
+        - key: karpenter.sh/capacity-type
+          operator: In
+          # COST-TRADEOFF: ["on-demand"] is the production setting. See header.
+          values: ["spot", "on-demand"]
+        # COST-TRADEOFF: t3a.medium / t3.medium are included, and they are the
+        # floor - the SCP allow-list contains nothing smaller than 2 vCPU / 4Gi.
+        #
+        # Listing a type does not force it. Karpenter bin-packs the pending pods
+        # and buys the CHEAPEST type that fits them, so a wider list can only
+        # lower the bill. The mediums are here because measured DaemonSet
+        # overhead on this cluster is 130m / 360Mi per node - aws-node 75m/192Mi,
+        # ebs-csi-node 30m/104Mi, kube-proxy 25m/64Mi, node-exporter 0 - which
+        # leaves ~1800m / 3736Mi usable on a medium. The platform class requests
+        # roughly 1.4 CPU / 2.5Gi in total, so it fits on one medium at
+        # $12.99/mo spot instead of one t4g.large at $19.34/mo.
+        #
+        # (ebs-csi-node-windows also exists but carries
+        # nodeSelector kubernetes.io/os: windows, so it never lands here. It is
+        # 30m/340Mi and counting it would overstate the overhead badly.)
+        #
+        # The 4-vCPU xlarges are deliberately NOT listed. Nothing in this class
+        # is CPU-bound, and leaving them out puts a hard ceiling on what a
+        # runaway HelmRelease can cost.
+        #
+        # Every type here is inside the workloads-OU SCP allow-list
+        # (infra-aws/organization allowed_instance_types). Adding one that is
+        # not on that list makes RunInstances fail and nodes silently never
+        # appear.
+        - key: node.kubernetes.io/instance-type
+          operator: In
+          values:
+            # arm64 (Graviton) - cheapest first
+            - t4g.medium
+            - t4g.large
+            - m7g.large
+            # amd64
+            - t3a.medium
+            - t3.medium
+            - t3a.large
+            - t3.large
+            - m5.large
+            - m6i.large
+
+  disruption:
+    consolidationPolicy: WhenEmptyOrUnderutilized
+    # 15m, not the 1m used for burst. Consolidation moves pods, and moving the
+    # control plane costs a leader election in every Flux controller. Slow churn
+    # is the point.
+    consolidateAfter: 15m
+    budgets:
+      # One node at a time. With PDBs absent on most of these charts, allowing
+      # two concurrent disruptions can take both replicas of a two-replica
+      # deployment down together.
+      - nodes: "1"
+
+  # Safety ceiling, not a target. Sized so a runaway HelmRelease cannot bill the
+  # account into next quarter.
+  limits:
+    cpu: "8"
+    memory: 32Gi

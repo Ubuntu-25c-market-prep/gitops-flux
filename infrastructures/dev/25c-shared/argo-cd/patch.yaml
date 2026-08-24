@@ -1,0 +1,22 @@
+# Dev sizing for 25c-shared.
+#
+# One replica of everything. This is a two-node cluster and Argo CD's own
+# availability is not what the environment is for - if the control plane is
+# down, git is still the source of truth and nothing has drifted.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: argo-cd
+  namespace: flux-system
+spec:
+  values:
+    controller:
+      replicas: 1
+    repoServer:
+      replicas: 1
+    server:
+      replicas: 1
+    applicationSet:
+      replicas: 1
+    redis-ha:
+      enabled: false

@@ -8,4 +8,14 @@ resources:
   - karpenter.yaml
   - istio.yaml
   - cert-manager.yaml
+  - external-dns.yaml
   - kiali.yaml
+  - prometheus-community.yaml
+  - eks-charts.yaml
+  - aws-ebs-csi-driver.yaml
+  - keda.yaml
+  - teleport.yaml
+  - kyverno.yaml
+  - argo.yaml
+  - rancher.yaml
+  - elastic.yaml

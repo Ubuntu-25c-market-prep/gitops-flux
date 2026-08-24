@@ -1,0 +1,116 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: kube-prometheus-stack
+  namespace: flux-system
+spec:
+  values:
+    prometheus:
+      prometheusSpec:
+        retention: 7d
+        resources:
+          requests:
+            memory: 512Mi
+            cpu: 200m
+          limits:
+            memory: 1Gi
+            cpu: 500m
+        storageSpec:
+          volumeClaimTemplate:
+            spec:
+              resources:
+                requests:
+                  storage: 10Gi
+        thanos:
+          objectStorageConfig:
+            existingSecret:
+              name: thanos-objstore-secret
+              key: objstore.yml
+    grafana:
+      persistence:
+        size: 2Gi
+      resources:
+        requests:
+          memory: 128Mi
+          cpu: 50m
+        limits:
+          memory: 256Mi
+          cpu: 200m
+      podLabels:
+        environment: dev
+    alertmanager:
+      alertmanagerSpec:
+        resources:
+          requests:
+            memory: 64Mi
+            cpu: 25m
+          limits:
+            memory: 128Mi
+            cpu: 100m
+        storage:
+          volumeClaimTemplate:
+            spec:
+              resources:
+                requests:
+                  storage: 2Gi
+      config:
+        route:
+          receiver: default
+          group_by: ['alertname', 'namespace', 'workstream']
+          group_wait: 30s
+          group_interval: 5m
+          repeat_interval: 4h
+          routes:
+            - match:
+                workstream: monitoring
+              receiver: monitoring-team
+            - match:
+                workstream: istio
+              receiver: istio-team
+            - match:
+                workstream: scaling
+              receiver: scaling-team
+            - match:
+                workstream: security
+              receiver: security-team
+        receivers:
+          - name: default
+            email_configs:
+              - to: 'aslantishbek97+u25c-ElenaPinar@gmail.com'
+                from: 'alertmanager@u25c.dev'
+                smarthost: 'smtp.gmail.com:587'
+                auth_username: 'alertmanager@u25c.dev'
+                auth_password: 'PLACEHOLDER'
+                send_resolved: true
+          - name: monitoring-team
+            email_configs:
+              - to: 'aslantishbek97+u25c-tatinatech@gmail.com,aslantishbek97+u25c-katoteshiku1989@gmail.com,aslantishbek97+u25c-romanhumeniuk312@gmail.com'
+                from: 'alertmanager@u25c.dev'
+                smarthost: 'smtp.gmail.com:587'
+                auth_username: 'alertmanager@u25c.dev'
+                auth_password: 'PLACEHOLDER'
+                send_resolved: true
+          - name: istio-team
+            email_configs:
+              - to: 'aslantishbek97+u25c-sevgiabaysal@gmail.com,aslantishbek97+u25c-kadze@gmail.com,aslantishbek97+u25c-cristianarseni@gmail.com,aslantishbek97+u25c-zhemaitite-anastasiia@gmail.com'
+                from: 'alertmanager@u25c.dev'
+                smarthost: 'smtp.gmail.com:587'
+                auth_username: 'alertmanager@u25c.dev'
+                auth_password: 'PLACEHOLDER'
+                send_resolved: true
+          - name: scaling-team
+            email_configs:
+              - to: 'aslantishbek97+u25c-sergiidan@gmail.com,aslantishbek97+u25c-bloomingirl@gmail.com,aslantishbek97+u25c-Drdmytrush90@gmail.com'
+                from: 'alertmanager@u25c.dev'
+                smarthost: 'smtp.gmail.com:587'
+                auth_username: 'alertmanager@u25c.dev'
+                auth_password: 'PLACEHOLDER'
+                send_resolved: true
+          - name: security-team
+            email_configs:
+              - to: 'aslantishbek97+u25c-katoteshiku1989@gmail.com,aslantishbek97+u25c-romanhumeniuk312@gmail.com,aslantishbek97+u25c-cristianarseni@gmail.com'
+                from: 'alertmanager@u25c.dev'
+                smarthost: 'smtp.gmail.com:587'
+                auth_username: 'alertmanager@u25c.dev'
+                auth_password: 'PLACEHOLDER'
+                send_resolved: true

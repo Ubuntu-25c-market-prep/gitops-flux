@@ -1,0 +1,46 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: external-dns
+  namespace: flux-system
+spec:
+  values:
+    # No replicaCount here, deliberately. The chart hardcodes `replicas: 1` in
+    # its Deployment template and exposes no value for it (verified against
+    # 1.21.1); its values schema allows unknown keys, so a `replicaCount: 2`
+    # would be accepted, ignored, and leave you reading Git thinking you had
+    # two. Scaling this controller is not a values change.
+    #
+    # One replica is also the correct number: external-dns has no leader
+    # election here, so a second writer would race the first over the same
+    # Route 53 records and the same TXT registry entries.
+
+    # Dev sizing, matched to sealed-secrets and cert-manager in this overlay.
+    # A CPU request but no CPU limit on purpose: the request is what the
+    # scheduler reserves and what protects the controller under node pressure,
+    # while a CPU limit would throttle the reconcile loop for no benefit -
+    # this pod is idle between 60s syncs. The memory limit is a real ceiling,
+    # since memory is not compressible.
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        memory: 256Mi
+
+    podLabels:
+      environment: dev
+
+    # Environment-specific, per the repo's base/overlay split: base holds
+    # environment-neutral values, the overlay patches in what is true only of
+    # this cluster.
+    #
+    # This cluster's identity in the TXT ownership registry. Every overlay
+    # must set its own - external-dns falls back to "default" otherwise, and
+    # two clusters sharing the zone would claim each other's records.
+    txtOwnerId: u25c-shared
+
+    # Reconcile interval. One minute is the chart default; the zone is small
+    # so dev keeps it. A quieter environment can raise this to cut Route 53
+    # API calls without changing the base.
+    interval: 1m

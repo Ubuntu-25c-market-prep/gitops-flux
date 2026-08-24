@@ -1,0 +1,14 @@
+# The Argo CD control plane runs here. Flux owns this namespace, and Flux owns
+# everything the Argo CD chart renders into it (ADR 0012). gitops-argocd owns
+# only the argoproj.io custom resources that appear inside it afterwards.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: argocd
+  labels:
+    u25c.io/workstream: argocd
+    u25c.io/owner: argocd
+    # No istio.io/rev. The Argo CD control plane is platform, not a business
+    # workload, and a sidecar on the repo-server complicates its egress to
+    # GitHub for no benefit here. Revisit with @istio if mTLS to the API server
+    # is ever required.

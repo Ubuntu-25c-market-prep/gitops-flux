@@ -1,0 +1,10 @@
+# The driver's own chart repository, published by kubernetes-sigs. Unlike
+# eks-charts it holds this one chart, so the source keeps the chart's name.
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: aws-ebs-csi-driver
+  namespace: flux-system
+spec:
+  interval: 24h
+  url: https://kubernetes-sigs.github.io/aws-ebs-csi-driver

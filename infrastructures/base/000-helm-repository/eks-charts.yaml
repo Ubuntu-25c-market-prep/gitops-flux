@@ -1,0 +1,11 @@
+# AWS's general Helm chart store, not an app-specific repository - aws-vpc-cni
+# is one of many charts published here (aws-load-balancer-controller, calico,
+# appmesh and others), so the source is named after the store.
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: eks-charts
+  namespace: flux-system
+spec:
+  interval: 24h
+  url: https://aws.github.io/eks-charts

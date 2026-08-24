@@ -1,0 +1,60 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: kyverno
+  namespace: flux-system
+spec:
+  values:
+    # Dev sizing for the four Kyverno controllers, on a tight 3-node
+    # t3.medium cluster. admissionController stays HA (it's on the request
+    # path for every API write); cleanupController isn't, so one replica
+    # is enough. podAntiAffinity spreading replicas across nodes is this
+    # chart's default already - nothing extra needed for that here.
+    admissionController:
+      replicas: 2
+      container:
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            memory: 384Mi
+      podDisruptionBudget:
+        enabled: true
+        minAvailable: 1
+
+    backgroundController:
+      replicas: 2
+      resources:
+        requests:
+          cpu: 50m
+          memory: 64Mi
+        limits:
+          memory: 128Mi
+      podDisruptionBudget:
+        enabled: true
+        minAvailable: 1
+
+    reportsController:
+      replicas: 2
+      resources:
+        requests:
+          cpu: 50m
+          memory: 64Mi
+        limits:
+          memory: 128Mi
+      podDisruptionBudget:
+        enabled: true
+        minAvailable: 1
+
+    cleanupController:
+      replicas: 1
+      resources:
+        requests:
+          cpu: 25m
+          memory: 64Mi
+        limits:
+          memory: 128Mi
+
+    podLabels:
+      environment: dev

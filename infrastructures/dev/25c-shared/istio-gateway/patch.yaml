@@ -15,3 +15,26 @@ spec:
         # list required. AWS-only assumption, which is exactly why it lives
         # here and not in base/.
         service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+
+        # DNS, not routing. external-dns reads this SERVICE - not gateway.yaml
+        # and not a VirtualService - because the Service is the only object
+        # carrying the NLB's address (status.loadBalancer.ingress[].hostname),
+        # and that address is what the record has to point at. A Gateway has
+        # no address to publish. Routing for this hostname is a separate
+        # VirtualService that arrives with Rancher itself (#57); until it
+        # exists this name resolves, terminates TLS, and gets Istio's 404 -
+        # which is the intended, verifiable state.
+        #
+        # In the overlay rather than base/ for the same reason txtOwnerId is:
+        # the name belongs to THIS cluster. A second cluster inheriting base/
+        # must never claim rancher.25c-team1.art.
+        #
+        # external-dns runs with sources `service` and `ingress` only, so the
+        # wildcard in gateway.yaml's `hosts` publishes nothing by itself -
+        # every hostname fronted by this gateway has to be named here. The
+        # annotation takes a comma-separated list; once it holds four or five
+        # names, the better answer is enabling external-dns's `istio-gateway`
+        # source instead, which widens its RBAC to Istio CRDs and is a call
+        # for the istio workstream to make. See the reasoning already written
+        # out in base/external-dns/helmrelease.yaml.
+        external-dns.alpha.kubernetes.io/hostname: rancher.25c-team1.art
