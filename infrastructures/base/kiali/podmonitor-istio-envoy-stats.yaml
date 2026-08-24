@@ -1,0 +1,32 @@
+# gitops-flux/infrastructures/base/kiali/podmonitor-istio-envoy-stats.yaml
+#
+# Without this, Prometheus never scrapes a single Istio metric and Kiali's
+# graph stays empty despite real mesh traffic - the same failure mode
+# confirmed in the personal lab (kadze/lab-tools) before its own PodMonitor
+# fix. kube-prometheus-stack ships ServiceMonitors for the usual cluster
+# components (apiserver, coredns, kubelet, ...) but nothing for Istio; that
+# has to be added separately.
+#
+# Targets every mesh-injected pod, any namespace: istiod's sidecar injector
+# labels injected pods security.istio.io/tlsMode=istio automatically, a
+# precise positive selector rather than a "match everything except X" one.
+#
+# Port 15090, path /stats/prometheus - Envoy's own Prometheus-format stats
+# endpoint on the istio-proxy sidecar.
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: istio-envoy-stats
+  namespace: platform-istio
+  labels:
+    release: monitoring-kube-prometheus-stack
+spec:
+  namespaceSelector:
+    any: true
+  selector:
+    matchLabels:
+      security.istio.io/tlsMode: istio
+  podMetricsEndpoints:
+    - path: /stats/prometheus
+      targetPort: 15090
+      interval: 15s
