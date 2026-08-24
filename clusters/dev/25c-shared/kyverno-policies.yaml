@@ -1,0 +1,42 @@
+# gitops-flux/clusters/dev/25c-shared/kyverno-policies.yaml
+#
+# ClusterPolicy gets its OWN Flux Kustomization because it is a kyverno.io
+# kind, and that CRD is installed by the kyverno HelmRelease inside the
+# `infrastructure` Kustomization.
+#
+# kustomize-controller server-side dry-runs a whole path before applying any
+# of it. Keeping the ClusterPolicy in `infrastructures/base/kyverno` alongside
+# the HelmRelease therefore meant: on a cluster where Kyverno's CRDs don't
+# exist yet, the dry-run failed on an unknown kind, and NOTHING in the
+# infrastructure path applied - including the HelmRelease that would have
+# created the CRD. Chicken and egg, with every other workstream stopped
+# behind it (same failure mode already solved once here for argo-bootstrap).
+#
+# dependsOn plus the health check below is the Flux-native answer: this
+# Kustomization does not even attempt its dry-run until `infrastructure` is
+# applied AND the kyverno HelmRelease reports Ready, by which point the CRDs
+# exist.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: kyverno-policies
+  namespace: flux-system
+spec:
+  interval: 20h0m0s
+  path: ./clusters/dev/25c-shared/kyverno-policies
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+
+  # Not just "applied" - Ready. A HelmRelease can be applied while the chart
+  # is still installing, and the CRDs land partway through that.
+  dependsOn:
+    - name: infrastructure
+
+  healthChecks:
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: kyverno
+      namespace: flux-system
+  timeout: 5m
