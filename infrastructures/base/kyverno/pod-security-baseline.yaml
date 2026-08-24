@@ -1,0 +1,32 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: pod-security-baseline
+  annotations:
+    policies.kyverno.io/title: Pod Security Standards (Baseline)
+    policies.kyverno.io/category: Pod Security Standards
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/description: >-
+      Applies the Kubernetes Pod Security Standards "baseline" profile via
+      Kyverno's built-in podSecurity check. Ticket #2 - Audit only, nothing
+      is blocked. Ticket #6 flips this to Enforce after a clean sprint.
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: baseline
+      match:
+        any:
+          - resources:
+              kinds: ["Pod"]
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - kube-system
+                - flux-system
+                - kyverno
+      validate:
+        podSecurity:
+          level: baseline
+          version: latest

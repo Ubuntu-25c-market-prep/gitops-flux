@@ -3,3 +3,4 @@ kind: Kustomization
 resources:
   - helmrelease.yaml
   - restrict-cross-namespace-irsa.yaml
+  - pod-security-baseline.yaml
