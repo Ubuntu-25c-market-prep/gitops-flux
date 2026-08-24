@@ -1,0 +1,51 @@
+# gitops-flux/infrastructures/base/metrics-server
+#
+# metrics-server serves the Kubernetes Metrics API (metrics.k8s.io). Without it
+# `kubectl top` fails and EVERY HorizontalPodAutoscaler reads its target as
+# `<unknown>` and cannot scale - which is how the cluster has been running:
+# istio-ingressgateway and istiod both carried HPAs reading `cpu: <unknown>/80%`
+# for ten days before anyone noticed, because a missing metric fails quietly
+# rather than loudly.
+#
+# It is also the prerequisite the VPA recommender needs, so Goldilocks (#68)
+# depends on this landing first.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: metrics-server
+  namespace: flux-system
+spec:
+  chart:
+    spec:
+      chart: metrics-server
+      # 3.13.1 (appVersion 0.8.1), not the newest. Chart 3.14.0 / app 0.9.0 was
+      # published 2026-08-19, five days before this was written; the thing whose
+      # job is to be a dependable metrics source is not where to take a
+      # brand-new release. Revisit once 3.14.x has some mileage.
+      version: "3.13.1"
+      sourceRef:
+        kind: HelmRepository
+        name: metrics-server
+        namespace: flux-system
+  interval: 20h0m0s
+  # kube-system, like the other core cluster add-ons (coredns, kube-proxy,
+  # aws-vpc-cni, aws-ebs-csi-driver). No namespace object to create.
+  targetNamespace: kube-system
+  # No CRDs - metrics-server registers an APIService (v1beta1.metrics.k8s.io)
+  # aggregated into the API server, which the chart owns.
+  install:
+    createNamespace: false
+  # Chart defaults are correct for EKS - deliberately no `args` override.
+  #
+  # Two things worth not "fixing" later:
+  #
+  #   --kubelet-insecure-tls is NOT needed. EKS kubelets present serving
+  #   certificates the API server CA can verify. That flag is a kind/kubeadm
+  #   workaround, and copying it in from a generic tutorial would silently
+  #   disable certificate verification against every kubelet.
+  #
+  #   This chart APPENDS values.args to the built-in argument list rather than
+  #   replacing it. Setting --kubelet-preferred-address-types here emits the flag
+  #   twice, since the chart already passes
+  #   InternalIP,ExternalIP,Hostname - which is what we want anyway.
+  values: {}

@@ -44,6 +44,13 @@
 /infrastructures/dev/25c-shared/karpenter/                   @Ubuntu-25c-market-prep/scaling
 /infrastructures/dev/25c-shared/karpenter-nodepool/          @Ubuntu-25c-market-prep/scaling
 
+# metrics-server serves the Metrics API that every HPA reads, so it belongs to
+# the workstream that owns HPA. Listed explicitly for the same reason
+# karpenter-nodepool is: without a rule of its own it falls through to the `*`
+# fallback and lands on @flux and @cto instead of the team that runs it.
+/infrastructures/base/metrics-server/                        @Ubuntu-25c-market-prep/scaling
+/infrastructures/dev/25c-shared/metrics-server/              @Ubuntu-25c-market-prep/scaling
+
 # Logging - EFK stack (ECK operator now; Elasticsearch, Fluent Bit, Kibana follow).
 /infrastructures/base/eck-operator/                          @Ubuntu-25c-market-prep/logging
 /infrastructures/dev/25c-shared/eck-operator/                @Ubuntu-25c-market-prep/logging
