@@ -33,6 +33,30 @@ spec:
 
   # IMDSv2 required, hop limit 1 (ADR 0005): a pod is one hop from IMDS, so this
   # stops a pod stealing the node's IAM credentials. Matches modules/eks.
+  # POD CEILING. Without this, Karpenter nodes cap at 17 pods while the managed
+  # node group runs 110 - measured on the live cluster, and the gap is what
+  # gitops-flux#126 reports.
+  #
+  # 17 is the un-delegated ENI formula for a t3.medium, and it reproduces
+  # exactly: 3 ENIs x (6 IPv4 - 1) + 2 = 17. Karpenter computes that number
+  # itself and does NOT detect prefix delegation, so it keeps using it even
+  # though the CNI has ENABLE_PREFIX_DELEGATION=true cluster-wide (set by
+  # gitops-flux#102). With delegation each slot carries a /28 instead of one
+  # address: 3 x (6-1) x 16 + 2 = 242, which kubelet convention caps at 110.
+  #
+  # 110 matches infra-aws eks/config.yaml `node_max_pods: 110`, so both kinds of
+  # node behave the same way. That file also records why this belongs here
+  # rather than on the CNI: "--max-pods is fixed at node bootstrap, so it buys
+  # nothing on a running node". Existing nodes therefore keep 17 until they are
+  # replaced.
+  #
+  # This does not mean 110 pods will fit. On a t3.medium with ~3.3Gi allocatable
+  # memory is the binding constraint long before pod count is - which is the
+  # point. The ceiling stops being an artificial limit and capacity becomes a
+  # resource question instead.
+  kubelet:
+    maxPods: 110
+
   metadataOptions:
     httpEndpoint: enabled
     httpTokens: required
