@@ -1,0 +1,182 @@
+# gitops-flux/infrastructures/dev/25c-shared/karpenter-nodepool/dev-u25c-np-prod-biz-od-use1.yaml
+#
+# On-demand capacity for the app-prod namespace. Closes the gap the apps pool
+# documents in its own header:
+#
+#   "app-prod is not exempted here, because a NodePool cannot select by
+#    namespace ... Until it is set there, app-prod can land on spot. This is a
+#    known, accepted gap."
+#
+# That constraint has not gone away - a NodePool still cannot select by
+# namespace. What this pool provides is a place for prod to go; what routes it
+# there is a nodeSelector and toleration on the app-prod workloads, which live
+# in the Argo CD repository, not this one. **Creating this pool moves nothing on
+# its own.** See docs/node-placement.md in ops-program for the contract app
+# teams follow.
+#
+# WHY A FIFTH POOL RATHER THAN A SELECTOR ON THE APPS POOL
+# --------------------------------------------------------
+# ADR 0013 splits pools by failure tolerance, and prod is the one workload class
+# on this cluster that genuinely cannot take a 2-minute spot drain mid-request.
+# The alternative - leaving prod on the apps pool and having each workload set
+# `karpenter.sh/capacity-type: on-demand` - was rejected: it is a per-workload
+# opt-in that every team has to remember, and forgetting it is silent. A tainted
+# pool fails loudly instead, because a workload that asks for prod capacity and
+# gets the toleration wrong stays Pending where someone will see it.
+#
+# COST
+# ----
+# On-demand only, so this is the most expensive pool per node-hour on the
+# cluster - roughly 2.2x the spot rate the other four pools pay. It costs
+# nothing today: app-prod is empty, Karpenter provisions on pending pods, and an
+# empty pool is zero nodes. The bill starts when the first prod workload
+# migrates, which is the point at which someone should decide whether a school
+# project needs on-demand prod at all. That decision belongs to whoever owns the
+# app, not to this file.
+apiVersion: karpenter.sh/v1
+kind: NodePool
+metadata:
+  name: dev-u25c-np-prod-biz-od-use1
+spec:
+  # No weight. Weight only breaks ties between pools a pod already matches, and
+  # nothing matches this pool without asking for it by name - the taint and the
+  # nodeSelector both have to be set. Leaving it at the default keeps `apps`
+  # (weight 10) as the accident-catcher.
+
+  template:
+    metadata:
+      labels:
+        u25c.io/pool: prod
+    spec:
+      nodeClassRef:
+        group: karpenter.k8s.aws
+        kind: EC2NodeClass
+        name: dev-u25c-nc-shared-use1
+
+      # Opt-in only. Nothing lands here without both the nodeSelector and the
+      # matching toleration, so this pool stays empty until a workload is
+      # explicitly moved onto it.
+      taints:
+        - key: u25c.io/pool
+          value: prod
+          effect: NoSchedule
+
+      # Rotate every 30 days to pick up patched AL2023 AMIs.
+      expireAfter: 720h
+
+      requirements:
+        # ON-DEMAND ONLY. This is the whole reason the pool exists; every other
+        # pool on this cluster is spot-first. A spot reclaim here is a planned
+        # 2-minute drain, not a crash - but for the one namespace meant to model
+        # production, "planned" is still an outage nobody asked for.
+        - key: karpenter.sh/capacity-type
+          operator: In
+          values: ["on-demand"]
+
+        # MIXED ARCH, unlike the apps pool. The apps pool is amd64-only on the
+        # stated grounds that app images are "student-built and most likely
+        # amd64-only". That was checked rather than assumed, on 2026-08-25:
+        #
+        #   aws ecr batch-get-image --repository-name 25c-project/storefront \
+        #     --image-ids imageTag=0.1.0 \
+        #     --accepted-media-types "application/vnd.oci.image.index.v1+json" \
+        #     --query 'images[0].imageManifest' --output text \
+        #     | jq -r '.manifests[]?.platform | "\(.os)/\(.architecture)"'
+        #   linux/amd64
+        #   linux/arm64
+        #
+        # infra-aws/ecr/config.yaml says the same: images are "built multi-arch
+        # (amd64 + arm64) and promoted between the app-* namespaces by tag,
+        # never rebuilt".
+        #
+        # THE COST OF THIS CHOICE, stated plainly: Karpenter buys the cheapest
+        # type that fits, and m7g.large is the cheapest entry below, so an
+        # amd64-only image landing here WILL get an arm64 node and fail as "exec
+        # format error" in CrashLoopBackOff. A workload that is not multi-arch
+        # must pin `kubernetes.io/arch: amd64` in its own nodeSelector. That is
+        # a real footgun and it is documented in ops-program
+        # docs/node-placement.md, step 1 of the migration guide.
+        #
+        # The apps pool is left amd64-only for now: flipping it affects
+        # workloads @argocd owns and deserves its own decision, ideally with CI
+        # asserting that app images stay multi-arch.
+        - key: kubernetes.io/arch
+          operator: In
+          values: ["arm64", "amd64"]
+        - key: kubernetes.io/os
+          operator: In
+          values: ["linux"]
+
+        # ADR 0006: two AZs of subnets, all node capacity in one. The ADR names
+        # a missing zone requirement as "the most likely way this decision
+        # silently stops holding", and it applies to a fifth pool exactly as it
+        # applies to the first four.
+        - key: topology.kubernetes.io/zone
+          operator: In
+          values: ["us-east-1b"]
+
+        # NO BURSTABLE FAMILIES, and this is a real deviation from the apps pool
+        # rather than an oversight.
+        #
+        # Karpenter buys the cheapest type that fits. Leave t3/t3a in the list
+        # and it will pick a burstable node every single time, because on-demand
+        # t3a.medium undercuts m5.large by roughly 4x. That is fine for dev and
+        # wrong here: a burstable instance that exhausts its CPU credits under
+        # sustained load throttles to its baseline - 20% of a vCPU on a medium -
+        # and the symptom is latency, not an error. It is among the harder
+        # production failures to diagnose from inside the cluster.
+        #
+        # So the floor is m7g.large / m5.large / c5.large. The larges and
+        # xlarges stay for the same reason the apps pool keeps them: when enough
+        # pods are pending, one xlarge is often cheaper than three larges, and
+        # consolidation needs that option to exist.
+        #
+        # m7g.* are the only non-burstable Graviton types the workloads-OU SCP
+        # allows (organization/variables.tf) - there is no c7g or r7g on that
+        # list, so this is the whole arm64 option, not a selection from it.
+        #
+        # PRICES, measured us-east-1 on-demand 2026-08-25 - and unlike the
+        # spot-first pools, on-demand list price IS the ordering Karpenter sees,
+        # so Graviton's advantage here is dependable rather than a snapshot:
+        #
+        #   m7g.large   $0.0816/hr     m7g.xlarge  $0.1632/hr
+        #   c5/c6i.large $0.0850/hr    c5/c6i.xlarge $0.1700/hr
+        #   m5/m6i.large $0.0960/hr    m5/m6i.xlarge $0.1920/hr
+        #
+        # m7g.large is both the cheapest entry and has 8GiB against c5.large's
+        # 4GiB, so it strictly dominates for anything memory-bound. Expect
+        # Karpenter to pick it, which is the point - 15% under m5.large.
+        - key: node.kubernetes.io/instance-type
+          operator: In
+          values:
+            - m7g.large
+            - m7g.xlarge
+            - m5.large
+            - m6i.large
+            - c5.large
+            - c6i.large
+            - m5.xlarge
+            - m6i.xlarge
+            - c5.xlarge
+            - c6i.xlarge
+
+  disruption:
+    # WhenEmpty, NOT WhenEmptyOrUnderutilized - the same choice the
+    # observability pool makes, for a different reason. Consolidating an
+    # underutilised prod node means evicting prod pods to repack them, and this
+    # pool exists precisely to avoid moving prod workloads for the platform's
+    # convenience. Reclaim nodes only once nothing is left on them.
+    consolidationPolicy: WhenEmpty
+    consolidateAfter: 30m
+    budgets:
+      # One node at a time. A percentage would be meaningless on a pool this
+      # size, and prod is where a proportional blast radius is least welcome.
+      - nodes: "1"
+
+  limits:
+    # Half the apps pool. app-prod is empty today; this is a guard against a
+    # runaway ScaledObject or a bad replica count quietly buying on-demand
+    # capacity, not a capacity plan. Raise it when there is something to size
+    # against.
+    cpu: "8"
+    memory: 32Gi

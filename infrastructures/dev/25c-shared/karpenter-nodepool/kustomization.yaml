@@ -61,7 +61,7 @@
 #
 # THE FOUR POOLS
 # --------------
-# Separated by failure tolerance, not by team:
+# Separated by failure tolerance, not by team. Five pools since #11 added prod:
 #
 #   platform       spot + on-demand, tainted   control plane - Flux,
 #                                              cert-manager, external-dns,
@@ -73,6 +73,10 @@
 #                                              the default landing zone
 #   burst          spot only, tainted          KEDA workers, Jobs, ETL -
 #                                              retryable
+#   prod           on-demand only, tainted     app-prod. The only pool that
+#                                              never takes spot. Mixed arch and
+#                                              no burstable families - see its
+#                                              own header for both
 #
 #
 # COST-TRADEOFF
@@ -160,6 +164,7 @@ resources:
   - dev-u25c-np-observability-spot-od-use1.yaml
   - dev-u25c-np-apps-biz-spot-od-use1.yaml
   - dev-u25c-np-burst-spot-use1.yaml
+  - dev-u25c-np-prod-biz-od-use1.yaml
 labels:
   - pairs:
       kustomize.toolkit.fluxcd.io/prune: enabled
