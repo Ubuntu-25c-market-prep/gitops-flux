@@ -1,0 +1,95 @@
+# aws-sqs-queue — scale a worker on queue depth.
+#
+# This is the trigger KEDA was installed for, and the reason the operator has an
+# IRSA role at all (gitops-flux#30).
+#
+# ⚠️ UNTESTED AS WRITTEN. There is no application SQS queue in account
+# 808540602855 yet - the only queue that exists is `u25c-shared`, Karpenter's
+# spot interruption queue, which KEDA is deliberately NOT permitted to read.
+# The field names and the auth model below come from the KEDA 2.20 scaler
+# contract and the IAM policy in infra-aws, but nothing here has been exercised
+# against a live queue. Treat it as a starting point, not as proven, and tell
+# @scaling when you create the first real queue so we can close that gap.
+#
+# QUEUE NAMING IS LOAD-BEARING. The operator's IAM policy grants SQS read only
+# on these name prefixes (infra-aws/keda/config.yaml):
+#
+#     u25c-dev-*    u25c-stage-*    u25c-prod-*
+#
+# A queue named anything else returns AccessDenied at the first poll, and the
+# error surfaces on the ScaledObject rather than at deploy time. Name the queue
+# for the environment it serves before you write the ScaledObject.
+---
+# The authentication object. One per namespace, referenced by every SQS
+# ScaledObject in it.
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: keda-aws
+  namespace: app-dev
+spec:
+  podIdentity:
+    provider: aws
+
+    # `keda` means the poll is made with the KEDA OPERATOR's IRSA role, not with
+    # your workload's ServiceAccount. Your pods need no AWS identity of their own
+    # to be scaled - which is the point, since the thing reading the queue depth
+    # is the operator, not your app.
+    #
+    # Consequence worth understanding before you copy this: the operator's role
+    # covers u25c-dev-*, u25c-stage-* AND u25c-prod-*, so a ScaledObject in
+    # app-dev can read the depth of a prod queue. It is read-only, and it is
+    # queue depth rather than message content, but it does cut across the
+    # boundary `restrict-cross-namespace-irsa` draws for ServiceAccounts.
+    # @scaling is tracking whether this should become one role per environment;
+    # raise it there rather than working around it.
+    identityOwner: keda
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: my-worker
+  namespace: app-dev
+spec:
+  scaleTargetRef:
+    name: my-worker
+
+  # A queue worker is the case scale-to-zero was made for: no messages, no pods,
+  # and on the `burst` pool, no node either.
+  minReplicaCount: 0
+  maxReplicaCount: 10
+  pollingInterval: 30           # one SQS API call per interval per ScaledObject
+  cooldownPeriod: 300
+
+  triggers:
+    - type: aws-sqs-queue
+      authenticationRef:
+        name: keda-aws          # the TriggerAuthentication above
+      metadata:
+        queueURL: https://sqs.us-east-1.amazonaws.com/808540602855/u25c-dev-my-worker
+        awsRegion: us-east-1
+
+        # TARGET MESSAGES PER REPLICA, not a total. KEDA divides queue depth by
+        # this to get the replica count: depth 50 with queueLength 5 asks for 10
+        # replicas. Setting it to the total queue size you consider "busy" is
+        # the usual mistake and produces one replica for everything.
+        queueLength: "5"
+
+        # Depth above which the workload is considered ACTIVE, i.e. the 0 -> 1
+        # transition. Distinct from queueLength: this decides whether to run at
+        # all, queueLength decides how many. Default 0 - any message wakes it.
+        activationQueueLength: "0"
+
+        # Count in-flight (received, not yet deleted) messages as well as
+        # visible ones. Default true. Leave it true unless your workers hold
+        # messages for a long time and you want depth to reflect only unstarted
+        # work.
+        scaleOnInFlight: "true"
+
+  # Place a worker like this on `burst` - see node-placement.md. It is retryable
+  # by construction: a spot reclaim mid-message means the message returns to the
+  # queue after its visibility timeout and another worker takes it.
+  #
+  # Make sure the visibility timeout is longer than your longest message
+  # processing time, or a slow message is redelivered while it is still being
+  # handled and the queue never appears to drain.

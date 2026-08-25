@@ -1,0 +1,56 @@
+# cpu — utilisation of the pods' CPU *requests*.
+#
+# Before using this, read gitops-flux#32: a plain HorizontalPodAutoscaler does
+# exactly the same thing with one less controller in the path. Use the KEDA form
+# only when this workload also has a non-CPU trigger, so that all of its scaling
+# lives in one object.
+#
+# CANNOT SCALE TO ZERO. minReplicaCount must be >= 1 - the metric is read from
+# running pods, so at zero replicas there is no signal that would ever bring the
+# workload back. KEDA's admission webhook rejects it, verified on this cluster:
+#
+#   Error from server (Forbidden): admission webhook "vscaledobject.kb.io"
+#   denied the request: scaledobject has only cpu/memory triggers AND
+#   minReplica is 0 (scale to zero doesn't work in this case)
+#
+# Note "only". Add a trigger that CAN scale to zero - cron, a queue - and
+# minReplicaCount 0 becomes legal again for the object as a whole.
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: my-app
+  namespace: app-dev
+spec:
+  scaleTargetRef:
+    name: my-app
+
+  minReplicaCount: 1            # 0 is rejected for cpu and memory
+  maxReplicaCount: 5
+
+  # No pollingInterval and no cooldownPeriod here, deliberately. Both only apply
+  # to the 0 <-> 1 transition that KEDA performs itself, and this scaler cannot
+  # go to zero - so above minReplicaCount 1 the HPA is doing the scaling on its
+  # own 15s cycle and both fields are inert. KEDA's admission webhook says so
+  # out loud if you set them:
+  #
+  #   Warning: PollingInterval is configured but is not relevant.
+  #   PollingInterval is only relevant when minReplicaCount = 0 [...]
+
+  triggers:
+    - type: cpu
+      # `metricType` at trigger level. The older `metadata.type` spelling is
+      # deprecated and will be dropped.
+      metricType: Utilization
+      metadata:
+        # Percent of the CPU *request*, averaged over ready pods. 80 against a
+        # 100m request means scale up past 80m per pod.
+        #
+        # This is why the request matters more than the limit: set the request
+        # too low and the workload looks permanently overloaded, so it scales up
+        # and never comes back down.
+        value: "80"
+
+  # Requires metrics-server, which is installed (gitops-flux#119). If TARGETS
+  # reads <unknown>, check `kubectl top pods -n <ns>` first - the problem is
+  # almost always the Metrics API, not KEDA.

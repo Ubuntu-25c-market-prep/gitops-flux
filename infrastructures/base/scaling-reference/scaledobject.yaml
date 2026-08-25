@@ -1,0 +1,88 @@
+# gitops-flux/infrastructures/base/scaling-reference/scaledobject.yaml
+#
+# A cron-triggered ScaledObject with scale-to-zero, exercising the full path:
+#
+#   KEDA -> HPA -> ReplicaSet -> Pending pods -> Karpenter provisions a `burst`
+#   node -> pods run -> window closes -> replicas to 0 -> node consolidates.
+#
+# Cron is deliberately the trigger the reference workload runs on, rather than
+# cpu or a queue:
+#
+#   - It is verifiable without a load generator and without AWS. Nothing about
+#     the proof depends on another team's component being healthy.
+#   - It is the one trigger class that HPA genuinely cannot do. `cpu` and
+#     `memory` ScaledObjects are HPA passthrough - KEDA adds nothing there
+#     except a common object shape (see gitops-flux#32 for HPA defaults).
+#   - Scale-to-zero is what makes the `burst` pool worth having, and it is the
+#     mechanism gitops-flux#12 (scheduled scale-to-zero) is built on.
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: scaling-reference
+  namespace: platform-scaling
+  labels:
+    app.kubernetes.io/name: scaling-reference
+    app.kubernetes.io/part-of: scaling
+    u25c.io/workstream: scaling
+    u25c.io/owner: scaling
+spec:
+  scaleTargetRef:
+    # apiVersion/kind default to apps/v1 Deployment. `name` must match the
+    # Deployment's metadata.name exactly - KEDA does not resolve it by label,
+    # and a name that matches nothing leaves the ScaledObject Ready=False with
+    # `error finding the scale target`.
+    name: scaling-reference
+
+  # 0 is the whole point. Outside the window this Deployment costs nothing, and
+  # `burst` consolidates the node about a minute later.
+  #
+  # WHAT `kubectl get hpa` WILL SHOW: MINPODS 1, not 0. An HPA cannot target
+  # zero, so KEDA creates the HPA with minReplicas 1 and performs the 1->0 and
+  # 0->1 transitions itself by scaling the Deployment directly. The HPA only
+  # owns the range above 1. This looks like the manifest was ignored; it was
+  # not. Check `kubectl get scaledobject` instead, which reports the real state.
+  minReplicaCount: 0
+  maxReplicaCount: 5
+
+  # How often KEDA evaluates the trigger. 30s is the default and is right for
+  # cron; a queue trigger on a latency-sensitive worker usually wants less, at
+  # the cost of an AWS API call per interval per ScaledObject.
+  pollingInterval: 30
+
+  # How long KEDA waits after the trigger goes inactive before scaling to zero.
+  # 300s is the default. It is why replicas do NOT drop the instant the window
+  # closes - budget for it when reading the timeline, and do not conclude the
+  # scale-down is broken until five minutes after `end`.
+  cooldownPeriod: 300
+
+  advanced:
+    # On delete, leave the Deployment where it is rather than restoring the
+    # replica count it had before KEDA took over. With scale-to-zero the
+    # "original" count is meaningless, and restoring it resurrects pods nobody
+    # asked for.
+    restoreToOriginalReplicaCount: false
+
+  triggers:
+    - type: cron
+      metadata:
+        # IANA name, not an offset. Etc/UTC keeps the schedule stable across
+        # daylight-saving transitions - a window written in a DST-observing zone
+        # silently moves twice a year, and the second Sunday in March is a bad
+        # time to discover the batch job runs an hour late.
+        timezone: Etc/UTC
+
+        # Daily 14:45-15:00 UTC. Short and off-peak: long enough to observe a
+        # Karpenter node come up and take pods, short enough that the standing
+        # cost is a few minutes of one spot node per day.
+        #
+        # This doubles as a daily regression check on the scaling path. If it
+        # stops producing pods, something upstream - KEDA, the `burst` pool, the
+        # NodeClass - broke, and we find out here rather than in an app team's
+        # incident.
+        start: "45 14 * * *"
+        end: "0 15 * * *"
+
+        # Inside the window the trigger asks for exactly this many replicas.
+        # 3 rather than 1 so the scale-up is visibly a scale-up, and so pod
+        # distribution across the new node is observable.
+        desiredReplicas: "3"

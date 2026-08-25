@@ -1,0 +1,128 @@
+# gitops-flux/infrastructures/base/scaling-reference/deployment.yaml
+#
+# The scaling reference workload (gitops-flux#31).
+#
+# This is the executable half of docs/scaledobject-templates/. Those templates
+# are text an app team copies; this is the same thing running in the cluster, so
+# the numbers in the documentation are measured rather than assumed, and so a
+# KEDA or Karpenter upgrade that breaks the scaling path breaks something we own
+# before it breaks something a product team owns.
+#
+# It serves a trivial HTTP response. That is not the point - the point is that it
+# is a normal Deployment with probes, requests and a pool placement, which is
+# what an app team's workload looks like. Anything here that a product workload
+# would not do is called out in a comment.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: scaling-reference
+  namespace: platform-scaling
+  labels:
+    app.kubernetes.io/name: scaling-reference
+    app.kubernetes.io/part-of: scaling
+    u25c.io/workstream: scaling
+    u25c.io/owner: scaling
+spec:
+  # NO `replicas` FIELD ON PURPOSE - this is the one thing every team gets wrong.
+  #
+  # KEDA drives replicas through an HPA it creates and owns. Committing a
+  # `replicas` value here means Flux server-side-applies it on every reconcile
+  # and the autoscaler immediately puts it back: the Deployment flaps between
+  # the committed number and the wanted one, forever, and it reads like KEDA is
+  # broken. Omitting the field leaves it owned by the HPA, which is correct.
+  #
+  # Argo CD users need the equivalent fix on their side - see
+  # docs/scaledobject-templates/README.md, "Do not commit a replica count".
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: scaling-reference
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: scaling-reference
+        app.kubernetes.io/part-of: scaling
+    spec:
+      # `burst` per docs/node-placement.md: retryable work, spot-only, nodes
+      # consolidate about a minute after the work goes away. A scale-to-zero
+      # workload is the definition of retryable.
+      #
+      # BOTH halves are required. The pool is tainted, so a nodeSelector without
+      # the matching toleration leaves every pod Pending, and a toleration
+      # without the nodeSelector lets them land anywhere.
+      nodeSelector:
+        u25c.io/pool: burst
+      tolerations:
+        - key: u25c.io/pool
+          value: burst
+          effect: NoSchedule
+
+      # `burst` is arm64 + amd64 and Karpenter buys whichever is cheaper, so the
+      # image has to be multi-arch or pods fail with `exec format error` on
+      # whichever architecture it lacks - trap #1 in docs/node-placement.md.
+      # busybox:1.37 publishes linux/amd64 and linux/arm64; the container logs
+      # `uname -m` at startup so the evidence is in `kubectl logs`.
+      terminationGracePeriodSeconds: 10
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        fsGroup: 65534
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: server
+          image: public.ecr.aws/docker/library/busybox:1.37
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              echo "scaling-reference starting on $(uname -m) as uid $(id -u)"
+              echo "scaling-reference on $(uname -m)" > /www/index.html
+              exec httpd -f -v -p 8080 -h /www
+          ports:
+            - name: http
+              containerPort: 8080
+          # Probes matter to scaling, not just to availability: a pod that is
+          # not Ready is excluded from the HPA's utilisation average. Without
+          # them a slow-starting pod counts as 0% CPU the moment it exists,
+          # which drags the average down and makes the autoscaler undo the
+          # scale-up it just did.
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            periodSeconds: 20
+          resources:
+            # Requests are what the HPA measures utilisation against and what
+            # Karpenter sizes nodes from. Limits are what the kernel throttles
+            # at. Getting the request wrong distorts every scaling decision
+            # downstream of it.
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: www
+              mountPath: /www
+      volumes:
+        # Needed only because readOnlyRootFilesystem is true and httpd wants a
+        # docroot it can be given. A real application serves from its image.
+        - name: www
+          emptyDir: {}
