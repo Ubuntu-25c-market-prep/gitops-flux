@@ -26,6 +26,13 @@ spec:
             existingSecret:
               name: thanos-objstore-secret
               key: objstore.yml
+        nodeSelector:
+          u25c.io/pool: observability
+        tolerations:
+          - key: u25c.io/pool
+            value: observability
+            effect: NoSchedule
+        priorityClassName: system-cluster-critical
     grafana:
       persistence:
         size: 2Gi
@@ -38,6 +45,29 @@ spec:
           cpu: 200m
       podLabels:
         environment: dev
+      nodeSelector:
+        u25c.io/pool: observability
+      tolerations:
+        - key: u25c.io/pool
+          value: observability
+          effect: NoSchedule
+      priorityClassName: system-cluster-critical
+    prometheusOperator:
+      nodeSelector:
+        u25c.io/pool: platform
+      tolerations:
+        - key: u25c.io/pool
+          value: platform
+          effect: NoSchedule
+      priorityClassName: system-cluster-critical
+    kube-state-metrics:
+      nodeSelector:
+        u25c.io/pool: observability
+      tolerations:
+        - key: u25c.io/pool
+          value: observability
+          effect: NoSchedule
+      priorityClassName: system-cluster-critical
     alertmanager:
       alertmanagerSpec:
         resources:
@@ -53,6 +83,8 @@ spec:
               resources:
                 requests:
                   storage: 2Gi
+        # NOT migrated yet — volume is in us-east-1a, pools are in us-east-1b
+        # Recreate the volume in us-east-1b first, then add nodeSelector + tolerations
       config:
         route:
           receiver: default
