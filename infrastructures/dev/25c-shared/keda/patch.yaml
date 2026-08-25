@@ -5,24 +5,40 @@ metadata:
   namespace: flux-system
 spec:
   values:
-    # Dev sizing for the three KEDA components.
+    # Sized from measurement, not guesswork. Five-day window, 2026-08-25,
+    # CPU as max-over-time of the 5m rate and memory as peak working set:
+    #
+    #   operator       max  2.3m CPU   peak  34Mi
+    #   metricServer   max  4.1m CPU   peak  60Mi
+    #   webhooks       max  0.4m CPU   peak  11Mi
+    #
+    # The previous values were chart-shaped round numbers - 100m CPU for a
+    # component that has never exceeded 3m. Requests reserve capacity whether or
+    # not it is used, and two of this cluster's four nodes sit at 99% and 95%
+    # of allocatable memory in REQUESTS, so the reservation is the cost. That
+    # is what let a system-node-critical DaemonSet preempt Kyverno on
+    # 2026-08-24.
+    #
+    # Every value below still clears its measured peak by a wide margin; these
+    # are idle-ish controllers whose load is a function of ScaledObject count,
+    # and there are none yet. Revisit when #31 lands real scalers.
     resources:
       operator:
         requests:
-          cpu: 100m
-          memory: 128Mi
+          cpu: 25m       # 11x measured max
+          memory: 64Mi   # 1.9x measured peak
         limits:
-          memory: 256Mi
+          memory: 192Mi
       metricServer:
         requests:
-          cpu: 100m
-          memory: 128Mi
+          cpu: 25m       # 6x measured max
+          memory: 96Mi   # 1.6x measured peak
         limits:
           memory: 256Mi
       webhooks:
         requests:
-          cpu: 50m
-          memory: 64Mi
+          cpu: 15m       # 37x measured max
+          memory: 32Mi   # 2.9x measured peak
         limits:
           memory: 128Mi
     podLabels:

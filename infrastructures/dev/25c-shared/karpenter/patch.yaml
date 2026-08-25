@@ -11,9 +11,17 @@ spec:
     # scheduling priority a cluster-critical component needs.
     priorityClassName: system-cluster-critical
     controller:
+      # Measured over 5 days on 2026-08-25: p95 62.5m CPU, max 79.7m, peak
+      # working set 301Mi. CPU comes down from 200m; memory does NOT.
+      #
+      # Karpenter's memory holds the bin-packing simulation and scales with
+      # cluster size and pending-pod count, so 512Mi keeps real headroom above
+      # the 301Mi peak. 150m CPU is ~1.9x measured max - deliberately not
+      # tighter, because starving the controller that provisions capacity is a
+      # bad trade for 50 millicores.
       resources:
         requests:
-          cpu: 200m
+          cpu: 150m
           memory: 512Mi
         limits:
           memory: 1Gi

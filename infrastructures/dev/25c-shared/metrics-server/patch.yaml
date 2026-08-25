@@ -18,8 +18,8 @@ spec:
     # latency-sensitive component.
     resources:
       requests:
-        cpu: 25m
-        memory: 96Mi
+        cpu: 25m       # measured max 8.4m - keep 3x, it is on the HPA hot path
+        memory: 64Mi   # measured peak 24Mi; 96Mi was my own over-estimate
       limits:
         memory: 192Mi
 
