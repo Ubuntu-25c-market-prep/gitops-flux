@@ -51,9 +51,15 @@
 /infrastructures/base/metrics-server/                        @Ubuntu-25c-market-prep/scaling
 /infrastructures/dev/25c-shared/metrics-server/              @Ubuntu-25c-market-prep/scaling
 
-# Logging - EFK stack (ECK operator now; Elasticsearch, Fluent Bit, Kibana follow).
+# Logging - EFK stack (ECK operator and Elasticsearch now; Fluent Bit, Kibana follow).
+#
+# elasticsearch/ is overlay-only and has no base/ counterpart: node count, disk
+# and version are per-cluster decisions. It still needs a rule of its own, for
+# the same reason karpenter-nodepool and metrics-server do - without one the
+# directory falls through to the `*` fallback and lands on @flux and @cto.
 /infrastructures/base/eck-operator/                          @Ubuntu-25c-market-prep/logging
 /infrastructures/dev/25c-shared/eck-operator/                @Ubuntu-25c-market-prep/logging
+/infrastructures/dev/25c-shared/elasticsearch/               @Ubuntu-25c-market-prep/logging
 
 # Mesh - istio.
 /infrastructures/base/istio-base/                            @Ubuntu-25c-market-prep/istio
