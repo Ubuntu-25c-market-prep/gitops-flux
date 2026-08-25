@@ -39,6 +39,30 @@ do not need KEDA for it — see gitops-flux#32, which sets HPA defaults. KEDA ea
 its place when the signal is *external* to the pod: a queue depth, a schedule, a
 metric only Prometheus knows.
 
+## What the full path actually costs, measured
+
+One complete cycle of the reference workload on 2026-08-25, a 15-minute cron
+window, timestamps in UTC:
+
+| Time | Event | Delta |
+|---|---|---|
+| 14:45:11 | Window opens. KEDA drives the Deployment 0 → 3. Pods `Pending`. | — |
+| 14:45:29 | Karpenter registers a `burst` node: t3.medium, spot, us-east-1b. | +18s |
+| 14:45:47 | 3/3 `Running` on the new node. | +36s |
+| 15:00:25 | Window closes. ScaledObject goes `ACTIVE=False` — **replicas stay at 3**. | — |
+| 15:04:53 | `cooldownPeriod` expires. Replicas reach 0. | +4m28s |
+| 15:06:43 | Node consolidated away. | +1m50s |
+
+**Cold start is about 35 seconds** when a node has to be bought first. If your
+workload cannot absorb that, scale-to-zero is the wrong choice for it — hold
+`minReplicaCount: 1` and pay for one pod instead.
+
+**A 15-minute window cost 21 minutes of node.** The node outlives the work by
+~40% here, because `cooldownPeriod` (5m) and consolidation (1m on `burst`) run
+in series after the last pod is wanted. Budget for that when you size a window
+or when you estimate what scale-to-zero saves: the saving is real, but it is not
+the window length.
+
 ## The five things that will bite you
 
 ### 1. Do not commit a replica count
