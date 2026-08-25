@@ -73,14 +73,36 @@ spec:
           operator: In
           values: ["on-demand"]
 
-        # amd64 only, for the same reason the apps pool is: this runs whatever
-        # Argo CD deploys into app-prod, which is student-built and most likely
-        # amd64-only. An arm64 node under an amd64-only image fails as "exec
-        # format error" in CrashLoopBackOff, which reads as a platform fault
-        # rather than a build one.
+        # MIXED ARCH, unlike the apps pool. The apps pool is amd64-only on the
+        # stated grounds that app images are "student-built and most likely
+        # amd64-only". That was checked rather than assumed, on 2026-08-25:
+        #
+        #   aws ecr batch-get-image --repository-name 25c-project/storefront \
+        #     --image-ids imageTag=0.1.0 \
+        #     --accepted-media-types "application/vnd.oci.image.index.v1+json" \
+        #     --query 'images[0].imageManifest' --output text \
+        #     | jq -r '.manifests[]?.platform | "\(.os)/\(.architecture)"'
+        #   linux/amd64
+        #   linux/arm64
+        #
+        # infra-aws/ecr/config.yaml says the same: images are "built multi-arch
+        # (amd64 + arm64) and promoted between the app-* namespaces by tag,
+        # never rebuilt".
+        #
+        # THE COST OF THIS CHOICE, stated plainly: Karpenter buys the cheapest
+        # type that fits, and m7g.large is the cheapest entry below, so an
+        # amd64-only image landing here WILL get an arm64 node and fail as "exec
+        # format error" in CrashLoopBackOff. A workload that is not multi-arch
+        # must pin `kubernetes.io/arch: amd64` in its own nodeSelector. That is
+        # a real footgun and it is documented in ops-program
+        # docs/node-placement.md, step 1 of the migration guide.
+        #
+        # The apps pool is left amd64-only for now: flipping it affects
+        # workloads @argocd owns and deserves its own decision, ideally with CI
+        # asserting that app images stay multi-arch.
         - key: kubernetes.io/arch
           operator: In
-          values: ["amd64"]
+          values: ["arm64", "amd64"]
         - key: kubernetes.io/os
           operator: In
           values: ["linux"]
@@ -104,13 +126,31 @@ spec:
         # and the symptom is latency, not an error. It is among the harder
         # production failures to diagnose from inside the cluster.
         #
-        # So the floor is m5.large / c5.large. The larges and xlarges stay for
-        # the same reason the apps pool keeps them: when enough pods are
-        # pending, one xlarge is often cheaper than three larges, and
+        # So the floor is m7g.large / m5.large / c5.large. The larges and
+        # xlarges stay for the same reason the apps pool keeps them: when enough
+        # pods are pending, one xlarge is often cheaper than three larges, and
         # consolidation needs that option to exist.
+        #
+        # m7g.* are the only non-burstable Graviton types the workloads-OU SCP
+        # allows (organization/variables.tf) - there is no c7g or r7g on that
+        # list, so this is the whole arm64 option, not a selection from it.
+        #
+        # PRICES, measured us-east-1 on-demand 2026-08-25 - and unlike the
+        # spot-first pools, on-demand list price IS the ordering Karpenter sees,
+        # so Graviton's advantage here is dependable rather than a snapshot:
+        #
+        #   m7g.large   $0.0816/hr     m7g.xlarge  $0.1632/hr
+        #   c5/c6i.large $0.0850/hr    c5/c6i.xlarge $0.1700/hr
+        #   m5/m6i.large $0.0960/hr    m5/m6i.xlarge $0.1920/hr
+        #
+        # m7g.large is both the cheapest entry and has 8GiB against c5.large's
+        # 4GiB, so it strictly dominates for anything memory-bound. Expect
+        # Karpenter to pick it, which is the point - 15% under m5.large.
         - key: node.kubernetes.io/instance-type
           operator: In
           values:
+            - m7g.large
+            - m7g.xlarge
             - m5.large
             - m6i.large
             - c5.large

@@ -74,9 +74,9 @@
 #   burst          spot only, tainted          KEDA workers, Jobs, ETL -
 #                                              retryable
 #   prod           on-demand only, tainted     app-prod. The only pool that
-#                                              never takes spot - see its own
-#                                              header for why burstable
-#                                              families are excluded too
+#                                              never takes spot. Mixed arch and
+#                                              no burstable families - see its
+#                                              own header for both
 #
 #
 # COST-TRADEOFF
