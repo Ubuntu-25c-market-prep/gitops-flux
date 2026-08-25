@@ -1,0 +1,49 @@
+---
+# gitops-flux/clusters/dev/25c-shared/scaling-reference.yaml
+#
+# The scaling reference workload gets its OWN Flux Kustomization, and its content
+# directory lives here under clusters/ rather than under
+# infrastructures/dev/25c-shared/, for the CRD-ordering reason established by
+# gitops-flux#117 for kyverno-policies.
+#
+# `infrastructures/dev/25c-shared/` has no committed kustomization.yaml, so
+# kustomize-controller auto-generates one by recursively walking every
+# subdirectory. A ScaledObject dropped anywhere under that path joins the
+# aggregate build, and its dry-run against a not-yet-registered keda.sh CRD
+# aborts the ENTIRE `infrastructure` apply - not just this workload. There is no
+# spec.ignore on the Kustomization CRD to exclude it after the fact (that field
+# exists only on GitRepository/OCIRepository/Bucket), so it has to never be
+# under that path in the first place.
+#
+# dependsOn orders this after `infrastructure`, which is what creates both the
+# platform-scaling namespace and the keda HelmRelease. The health check on that
+# HelmRelease is what distinguishes "applied" from "installed": a HelmRelease can
+# be applied while the chart is still installing, and the CRDs land partway
+# through that.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: scaling-reference
+  namespace: flux-system
+spec:
+  interval: 20h0m0s
+
+  # Not the default, which would be `interval` - i.e. a failed apply would sit
+  # unretried for 20 hours. This Kustomization depends on a CRD registered by a
+  # Helm install, so the failure it is most likely to hit is a transient
+  # ordering one on a cold bootstrap, and that deserves minutes rather than a
+  # day.
+  retryInterval: 5m0s
+
+  path: ./clusters/dev/25c-shared/scaling-reference
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  dependsOn:
+    - name: infrastructure
+  healthChecks:
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: keda
+      namespace: flux-system

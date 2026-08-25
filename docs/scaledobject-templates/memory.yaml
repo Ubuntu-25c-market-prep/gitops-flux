@@ -1,0 +1,40 @@
+# memory — utilisation of the pods' memory *requests*.
+#
+# Usually the wrong signal, and worth arguing about before shipping. Most
+# processes do not release memory back when load drops - JVM heaps, Go's
+# allocator, any in-process cache - so memory goes up under load and then stays
+# up. That produces a scale-up that never scales back down, which is a standing
+# cost rather than an autoscaler.
+#
+# Use it when memory genuinely tracks work in flight: a per-request buffer, a
+# bounded cache sized to the queue. Otherwise prefer cpu, a queue depth, or a
+# Prometheus query over the metric you actually care about.
+#
+# CANNOT SCALE TO ZERO, for the same reason as cpu.
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: my-app
+  namespace: app-dev
+spec:
+  scaleTargetRef:
+    name: my-app
+
+  minReplicaCount: 1
+  maxReplicaCount: 5
+
+  # No pollingInterval and no cooldownPeriod here, deliberately. Both only apply
+  # to the 0 <-> 1 transition that KEDA performs itself, and this scaler cannot
+  # go to zero - so above minReplicaCount 1 the HPA is doing the scaling on its
+  # own 15s cycle and both fields are inert. KEDA's admission webhook says so
+  # out loud if you set them:
+  #
+  #   Warning: PollingInterval is configured but is not relevant.
+  #   PollingInterval is only relevant when minReplicaCount = 0 [...]
+
+  triggers:
+    - type: memory
+      metricType: Utilization
+      metadata:
+        value: "80"           # percent of the memory request

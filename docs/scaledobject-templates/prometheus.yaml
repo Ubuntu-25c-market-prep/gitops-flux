@@ -1,0 +1,64 @@
+# prometheus — scale on any PromQL query.
+#
+# The general-purpose escape hatch: if the signal you care about is a metric and
+# there is no native scaler for it, this is the trigger. Requests per second,
+# p99 latency, connection pool saturation, backlog in something that is not SQS.
+#
+# ⚠️ UNTESTED, AND THERE IS A DEPENDENCY CAVEAT. The monitoring stack on this
+# cluster is degraded: HelmRelease/kube-prometheus-stack has been Ready=False for
+# over a week on a missing ConfigMap, and it is pinned to a release with no
+# Thanos sidecar and 15 days of local EBS retention. Prometheus itself is running
+# and serving queries, which is why this trigger is documented - but it is owned
+# by @monitoring and it is not currently in a healthy, reconciling state.
+#
+# What that means for you: a ScaledObject that depends on Prometheus inherits
+# Prometheus's availability. If it goes away, this trigger stops returning a
+# value. Set `fallback` (below) so that failure degrades to a fixed replica count
+# instead of to whatever the last reading happened to be.
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: my-app
+  namespace: app-dev
+spec:
+  scaleTargetRef:
+    name: my-app
+
+  minReplicaCount: 0
+  maxReplicaCount: 10
+  pollingInterval: 30
+  cooldownPeriod: 300
+
+  # Because this trigger has an external dependency, say what should happen when
+  # that dependency fails. Without a fallback, a Prometheus outage means KEDA
+  # cannot get a metric and the replica count simply stops responding to load.
+  fallback:
+    failureThreshold: 3         # consecutive failed polls before falling back
+    replicas: 2                 # hold this many until the metric returns
+
+  triggers:
+    - type: prometheus
+      metadata:
+        # In-cluster service address. No trailing path.
+        serverAddress: http://monitoring-kube-prometheus-prometheus.monitoring.svc:9090
+
+        # The query must return a SINGLE scalar. A query returning a vector with
+        # several series fails at poll time, and the error appears on the
+        # ScaledObject rather than anywhere near your dashboard - wrap it in
+        # sum() and be explicit about the labels.
+        query: |
+          sum(rate(http_requests_total{namespace="app-dev",app="my-app"}[2m]))
+
+        # Target value of that query PER REPLICA. Same arithmetic as
+        # queueLength: query result divided by threshold gives the replica count.
+        threshold: "100"
+
+        # Value above which the workload is considered active (the 0 -> 1
+        # transition). Keep it above zero for a rate() query, or noise floor
+        # traffic will hold one replica up permanently.
+        activationThreshold: "10"
+
+  # No authenticationRef: Prometheus here is unauthenticated inside the cluster.
+  # That is a @monitoring decision, not a @scaling one - if it gains auth, this
+  # template needs a TriggerAuthentication with a bearer token.

@@ -1,0 +1,79 @@
+# gitops-flux/infrastructures/dev/25c-shared/000-cluster-wide-resources/namespace/platform-scaling.yaml
+#
+# The `scaling` workstream's own namespace. It exists to hold the scaling
+# reference workload (gitops-flux#31) - the executable copy of the ScaledObject
+# templates in docs/scaledobject-templates/.
+#
+# Why a namespace of our own rather than testing in app-dev: `app-*` namespaces
+# belong to Argo CD (ADR 0013), their AppProject restricts destinations to that
+# prefix, and their ResourceQuota is sized for business workloads. A platform
+# team that borrows one to test with is spending another team's quota.
+#
+# Namespace, quota and limits live in one file because they are one decision -
+# the same reasoning as app-dev.yaml.
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: platform-scaling
+  labels:
+    u25c.io/workstream: scaling
+    u25c.io/owner: scaling
+
+    # No istio.io/rev on purpose. A sidecar would add its own CPU request and
+    # its own container to every pod here, which is noise in a workload whose
+    # entire job is to make scaling arithmetic legible. Revisit if the mesh ever
+    # becomes mandatory rather than opt-in.
+
+    # Pod Security Admission, matching the posture app-dev sets: enforce
+    # baseline, warn and audit on restricted. The reference workload is written
+    # to pass `restricted` as well, so the warnings should stay silent - if a
+    # change here starts producing them, that is the signal it stopped being a
+    # good example for app teams to copy.
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: compute
+  namespace: platform-scaling
+spec:
+  hard:
+    # Deliberately above the reference workload's maxReplicaCount (5) so the
+    # quota is never what stops a scale-up here.
+    #
+    # This is the trap worth knowing: a ResourceQuota that binds during a
+    # scale-up does NOT surface on the ScaledObject or the HPA. Both keep
+    # reporting that they want more replicas; the ReplicaSet is what fails, with
+    # `exceeded quota` in its events, and `kubectl get scaledobject` looks
+    # perfectly healthy the whole time. Documented in
+    # docs/scaledobject-templates/README.md.
+    pods: "8"
+
+    requests.cpu: 500m
+    requests.memory: 512Mi
+    limits.cpu: "2"
+    limits.memory: 1Gi
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: defaults
+  namespace: platform-scaling
+spec:
+  limits:
+    - type: Container
+      default:
+        cpu: 100m
+        memory: 128Mi
+      defaultRequest:
+        cpu: 25m
+        memory: 32Mi
+      max:
+        cpu: 500m
+        memory: 512Mi
+      min:
+        cpu: 10m
+        memory: 16Mi

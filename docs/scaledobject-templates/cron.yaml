@@ -1,0 +1,40 @@
+# cron — scale on a schedule. The only trigger class an HPA cannot do at all.
+#
+# Verified in-cluster on the platform-scaling/scaling-reference workload.
+#
+# Use for: business-hours services, nightly batch, anything whose load is a
+# function of the clock rather than of demand. Also the mechanism behind
+# scheduled scale-to-zero (gitops-flux#12).
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: my-app
+  namespace: app-dev
+spec:
+  scaleTargetRef:
+    name: my-app                # must match the Deployment name exactly
+
+  minReplicaCount: 0            # outside every window: no pods, no node, no cost
+  maxReplicaCount: 5
+  pollingInterval: 30           # seconds between trigger evaluations
+  cooldownPeriod: 300           # seconds of inactivity before scaling to zero
+
+  triggers:
+    - type: cron
+      metadata:
+        # IANA zone name, never a UTC offset. A window written in a
+        # DST-observing zone silently moves twice a year.
+        timezone: Etc/UTC
+
+        # Standard 5-field cron. Weekdays 08:00-18:00 UTC in this example.
+        start: "0 8 * * 1-5"
+        end: "0 18 * * 1-5"
+
+        # Replicas to hold for the duration of the window. A string, not an int.
+        desiredReplicas: "3"
+
+  # Multiple cron triggers are allowed and KEDA takes the HIGHEST replica count
+  # any active trigger asks for. That is how you express "3 during the day, 10
+  # for the Friday afternoon peak" - add a second trigger, do not try to write
+  # one clever schedule.
