@@ -1,7 +1,7 @@
 # gitops-flux/infrastructures/base/argo-cd/bootstrap-app.yaml
 #
 # THE HANDOVER SEAM. One object, and it is the only place the two controllers
-# meet (ADR 0013). Flux creates it and never looks inside; everything downstream
+# meet (ADR 0015). Flux creates it and never looks inside; everything downstream
 # of it is reconciled by Argo CD.
 #
 # It points at this cluster's entrypoint directory in gitops-argocd, not at the

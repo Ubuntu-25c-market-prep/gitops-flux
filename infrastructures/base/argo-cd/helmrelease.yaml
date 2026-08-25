@@ -1,7 +1,7 @@
 # gitops-flux/infrastructures/base/argo-cd/helmrelease.yaml
 #
 # Flux installs and owns the Argo CD CONTROL PLANE. gitops-argocd owns only
-# argoproj.io custom resources (ADR 0013). The boundary is drawn at `kind`
+# argoproj.io custom resources (ADR 0015). The boundary is drawn at `kind`
 # rather than at "install versus configuration", because this chart renders
 # argocd-cm and argocd-rbac-cm itself - so any split along that line would put
 # two controllers on one object.

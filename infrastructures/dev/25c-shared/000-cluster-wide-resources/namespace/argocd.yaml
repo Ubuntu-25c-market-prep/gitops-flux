@@ -1,5 +1,5 @@
 # The Argo CD control plane runs here. Flux owns this namespace, and Flux owns
-# everything the Argo CD chart renders into it (ADR 0013). gitops-argocd owns
+# everything the Argo CD chart renders into it (ADR 0015). gitops-argocd owns
 # only the argoproj.io custom resources that appear inside it afterwards.
 apiVersion: v1
 kind: Namespace
