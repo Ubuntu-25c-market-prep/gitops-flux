@@ -10,7 +10,8 @@
 # bounded cache sized to the queue. Otherwise prefer cpu, a queue depth, or a
 # Prometheus query over the metric you actually care about.
 #
-# CANNOT SCALE TO ZERO, for the same reason as cpu.
+# CANNOT SCALE TO ZERO, for the same reason as cpu - see cpu.yaml for the exact
+# webhook error and the 'only' caveat that goes with it.
 ---
 apiVersion: keda.sh/v1alpha1
 kind: ScaledObject

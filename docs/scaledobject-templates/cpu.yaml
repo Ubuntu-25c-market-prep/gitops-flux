@@ -7,7 +7,14 @@
 #
 # CANNOT SCALE TO ZERO. minReplicaCount must be >= 1 - the metric is read from
 # running pods, so at zero replicas there is no signal that would ever bring the
-# workload back. KEDA rejects the ScaledObject outright if you try.
+# workload back. KEDA's admission webhook rejects it, verified on this cluster:
+#
+#   Error from server (Forbidden): admission webhook "vscaledobject.kb.io"
+#   denied the request: scaledobject has only cpu/memory triggers AND
+#   minReplica is 0 (scale to zero doesn't work in this case)
+#
+# Note "only". Add a trigger that CAN scale to zero - cron, a queue - and
+# minReplicaCount 0 becomes legal again for the object as a whole.
 ---
 apiVersion: keda.sh/v1alpha1
 kind: ScaledObject

@@ -6,10 +6,11 @@ Copyable starting points for autoscaling a workload with KEDA on `u25c-shared`,
 plus the failure modes that cost time.
 
 **How far each template has been proven** is stated in the table below and at the
-top of each file, and the distinction is deliberate. `cron` has run end to end in
-this cluster. The other four were accepted by KEDA's admission webhook, which
-validates structure and scaler configuration but does not poll anything. Two of
-them have never talked to the system they scale on. Every template here targets a Deployment
+top of each file, and the distinction is deliberate. Each one was applied to this
+cluster for real — not dry-run, which turns out to prove very little (trap 7
+below) — and its `status.conditions` read back. `cron` went further and ran end
+to end on the reference workload. `aws-sqs-queue` is the one that cannot reach
+`READY=True` yet, because there is no application queue in the account to poll. Every template here targets a Deployment
 called `my-app` in your own namespace — change the name, the namespace and the
 threshold, and nothing else.
 
@@ -27,10 +28,10 @@ a real ScaledObject, and it is where the measured numbers below come from.
 | Trigger | Use it for | Scale to zero | Status here |
 |---|---|---|---|
 | [`cron`](cron.yaml) | Known schedules: business hours, nightly batch | **Yes** | ✅ verified in-cluster |
-| [`cpu`](cpu.yaml) | Request-driven services with no better signal | No | ✅ accepted by the webhook |
-| [`memory`](memory.yaml) | Caches and buffers, rarely the right signal | No | ✅ accepted by the webhook |
-| [`aws-sqs-queue`](aws-sqs-queue.yaml) | Queue workers — the reason KEDA is installed | **Yes** | ⚠️ webhook-valid, **never run against a real queue** |
-| [`prometheus`](prometheus.yaml) | Anything with a metric but no native scaler | **Yes** | ⚠️ webhook-valid, **never run against a real query** |
+| [`cpu`](cpu.yaml) | Request-driven services with no better signal | No | ✅ applied, `READY=True` |
+| [`memory`](memory.yaml) | Caches and buffers, rarely the right signal | No | ✅ applied, `READY=True` |
+| [`aws-sqs-queue`](aws-sqs-queue.yaml) | Queue workers — the reason KEDA is installed | **Yes** | ⚠️ applies, then `READY=False` — **no queue exists to poll** |
+| [`prometheus`](prometheus.yaml) | Anything with a metric but no native scaler | **Yes** | ✅ applied, `READY=True` against live Prometheus |
 
 **Start with the question "what does load actually look like for this workload?"**
 If the honest answer is "requests arrive and CPU goes up", `cpu` is fine and you
@@ -132,6 +133,29 @@ Size `maxReplicaCount` against your quota before you ship, not during an
 incident. The reference workload's namespace sets `pods: "8"` against a
 `maxReplicaCount` of 5 for exactly this reason.
 
+### 7. `--dry-run=server` is not a valid pre-flight check for a ScaledObject
+
+Measured on this cluster, KEDA 2.20.2. The same manifest, twice:
+
+```
+$ kubectl apply --dry-run=server -f cpu-with-min-zero.yaml
+scaledobject.keda.sh/my-app created (server dry run)          # passes
+
+$ kubectl apply -f cpu-with-min-zero.yaml
+Error from server (Forbidden): admission webhook "vscaledobject.kb.io"
+denied the request: scaledobject has only cpu/memory triggers AND
+minReplica is 0 (scale to zero doesn't work in this case)      # denied
+```
+
+KEDA's validating webhook skips part of its checking when the request is a dry
+run, so a dry run can report success on a manifest the cluster will refuse.
+
+This matters most in CI: a pipeline that gates on `--dry-run=server` will pass a
+ScaledObject that fails on merge, and with Flux that failure lands as a
+`Kustomization` that stops applying — taking everything else in the same
+Kustomization with it. Validate ScaledObjects by applying them to a scratch
+namespace and reading `status.conditions`, not by dry-running them.
+
 ## Where the pods land
 
 Autoscaling a workload without saying where it runs is half a decision. Pods that
@@ -162,5 +186,13 @@ kubectl describe scaledobject <name> -n <ns>      # trigger errors surface here
 ```
 
 If `READY=False`, the message on the ScaledObject's conditions is specific and
-worth reading before anything else — a `scaleTargetRef` naming a Deployment that
-does not exist reports `error finding the scale target`, not a generic failure.
+worth reading before anything else. Two real ones from this cluster:
+
+```
+ScaledObject doesn't have correct scaleTargetRef specification:
+  deployments.apps "my-app" not found          # the name does not match
+Triggers defined in ScaledObject are not working correctly
+  # the scaler itself failed - wrong queue URL, no permission, unreachable
+  # endpoint. Check the keda-operator log for the underlying error, which is
+  # NOT copied onto the ScaledObject.
+```
