@@ -5,8 +5,33 @@ metadata:
   namespace: flux-system
 spec:
   values:
-    # Dev is the only cluster today, so this overlay is deliberately thin. When
-    # a second environment exists, the values that differ per environment -
-    # clusterName, volumeSize, and eventually chartMode - belong here rather
-    # than in base.
-    clusterName: u25c-shared-dev.teleport.local
+    # clusterName IS THE CLUSTER'S IDENTITY AND CANNOT BE CHANGED IN PLACE.
+    #
+    # It is baked into the cluster's certificate authority the first time the
+    # auth service starts. Editing it on a running deployment does not rename
+    # anything - the CA on the PVC still carries the old name.
+    #
+    # This install ran as u25c-shared-dev.teleport.local from gitops-flux#99
+    # until 26 August. Moving to the real hostname therefore required deleting
+    # the PVC and letting the auth service initialise fresh, which discards the
+    # local user database, MFA enrolments and every session recording.
+    # Acceptable here - one evaluation user, eight days old. It would not be
+    # once anyone else depends on this, which is the reason to fix the name now.
+    clusterName: teleport.25c-team1.art
+
+    # Behind the shared Istio gateway, which terminates TLS with the wildcard
+    # certificate for *.25c-team1.art (gitops-flux#135).
+    #
+    # useExisting tells the chart to configure Teleport as if it sits behind an
+    # ingress - serving plain HTTP, not terminating TLS - without creating an
+    # Ingress resource. A VirtualService routes to it instead, which is how
+    # every other hostname on this cluster reaches its backend.
+    #
+    # service.type stays ClusterIP from base, so no second load balancer.
+    ingress:
+      enabled: true
+      useExisting: true
+      # The chart otherwise adds *.teleport.25c-team1.art as a served hostname
+      # for Application Access, which we do not use. The wildcard certificate is
+      # one label deep and would not cover it anyway.
+      suppressAutomaticWildcards: true

@@ -1,0 +1,46 @@
+# gitops-flux/infrastructures/dev/25c-shared/teleport-cluster/virtualservice.yaml
+#
+# The routing half. The shared Gateway already says "I accept *.25c-team1.art
+# on 443 and here is the certificate"; nothing said where teleport.25c-team1.art
+# should go, so that hostname returns Istio's 404.
+#
+# Lives in this overlay rather than the istio-gateway one, for the same reason
+# rancher/virtualservice.yaml does: the Gateway is shared infrastructure owned
+# by the istio workstream, but the route for one hostname belongs with the thing
+# it routes to. Deleting this directory removes Teleport and its route together.
+#
+# Replaces `kubectl port-forward -n teleport svc/teleport 8443:443`, which was
+# the only way in since gitops-flux#99 and made Teleport effectively single-user.
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: teleport
+  namespace: teleport
+spec:
+  hosts:
+    - teleport.25c-team1.art
+  # <namespace>/<name> of the shared Gateway. A bare name resolves in this
+  # VirtualService's own namespace, where no Gateway exists, and the route
+  # attaches to nothing without erroring.
+  gateways:
+    - platform-istio/ingressgateway
+  http:
+    - route:
+        - destination:
+            # PORT TO VERIFY AFTER RECONCILE. With ingress.useExisting the chart
+            # should stop terminating TLS and serve plain HTTP on the web port,
+            # but the service may still publish 443. Check with
+            #   kubectl get svc -n teleport
+            # and correct this if it differs. A wrong port shows as a 503 from
+            # Istio and breaks nothing else.
+            host: teleport.teleport.svc.cluster.local
+            port:
+              number: 3080
+      # NO `timeout` field, deliberately - same reasoning as the rancher route.
+      # Teleport's web terminal holds a long-lived websocket for the duration of
+      # an exec session, and a request timeout would cut a session mid-command.
+      # Istio's default is no timeout; omitting the field is how you get it.
+      #
+      # Do NOT write `timeout: 0s`: Istio's CRD validation rejects it, and a
+      # resource that fails dry-run rejects the entire Kustomization - stopping
+      # every workstream's changes, as in #110 and #93.
