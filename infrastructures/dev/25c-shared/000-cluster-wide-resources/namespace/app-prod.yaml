@@ -18,6 +18,20 @@ metadata:
     u25c.io/owner: argocd
     u25c.io/environment: prod
 
+
+    # Opt-in sidecar injection (gitops-flux#26 convention), matching app-dev.
+    # Pinned to the istiod revision, not the unrevisioned
+    # `istio-injection: enabled` label - this cluster's istiod has no
+    # unrevisioned control plane to inject from, so the older label would be
+    # accepted and silently do nothing.
+    #
+    # Absent here until gitops-flux#138, which meant the FIRST PRODUCTION
+    # RELEASE ran outside the mesh with no mTLS - less protected than dev. The
+    # sidecar sizing from gitops-argocd#11 renders into the prod overlay but an
+    # annotation does nothing without an injector to read it, so the manifests
+    # read as though prod were meshed when it was not.
+    istio.io/rev: 1-30-3
+
     # Pod Security Admission, built into Kubernetes and free.
     #
     # `baseline` is enforced now because it blocks the things nobody legitimately
