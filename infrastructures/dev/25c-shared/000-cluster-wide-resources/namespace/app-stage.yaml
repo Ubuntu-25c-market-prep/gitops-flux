@@ -17,6 +17,19 @@ metadata:
     u25c.io/owner: argocd
     u25c.io/environment: stage
 
+
+    # Opt-in sidecar injection (gitops-flux#26 convention), matching app-dev.
+    # Pinned to the istiod revision, not the unrevisioned
+    # `istio-injection: enabled` label - this cluster's istiod has no
+    # unrevisioned control plane to inject from, so the older label would be
+    # accepted and silently do nothing.
+    #
+    # Absent here until gitops-flux#138. #120 labelled app-dev only, which was
+    # the right scope for that PR - stage and prod had no running workloads yet.
+    # The gap is invisible from the manifests: an unlabelled namespace produces
+    # no warning and no event, the pods simply come up one container short.
+    istio.io/rev: 1-30-3
+
     # Pod Security Admission, built into Kubernetes and free.
     #
     # `baseline` is enforced now because it blocks the things nobody legitimately
