@@ -22,6 +22,20 @@ spec:
       podDisruptionBudget:
         enabled: true
         minAvailable: 1
+      nodeSelector:
+        u25c.io/pool: platform
+      tolerations:
+        - key: u25c.io/pool
+          value: platform
+          effect: NoSchedule
+      priorityClassName: system-cluster-critical
+      # On the request path for every API write - losing every replica at
+      # once means every admission request in the cluster blocks or fails
+      # open, Karpenter's own node/pod creation included if its webhook is
+      # failurePolicy: Fail. The PDB above only blocks eviction of the LAST
+      # replica; this keeps Karpenter from targeting the node at all.
+      podAnnotations:
+        karpenter.sh/do-not-disrupt: "true"
 
     backgroundController:
       replicas: 2
@@ -34,6 +48,15 @@ spec:
       podDisruptionBudget:
         enabled: true
         minAvailable: 1
+      nodeSelector:
+        u25c.io/pool: platform
+      tolerations:
+        - key: u25c.io/pool
+          value: platform
+          effect: NoSchedule
+      priorityClassName: system-cluster-critical
+      podAnnotations:
+        karpenter.sh/do-not-disrupt: "true"
 
     reportsController:
       replicas: 2
@@ -46,6 +69,15 @@ spec:
       podDisruptionBudget:
         enabled: true
         minAvailable: 1
+      nodeSelector:
+        u25c.io/pool: platform
+      tolerations:
+        - key: u25c.io/pool
+          value: platform
+          effect: NoSchedule
+      priorityClassName: system-cluster-critical
+      podAnnotations:
+        karpenter.sh/do-not-disrupt: "true"
 
     cleanupController:
       replicas: 1
@@ -55,6 +87,18 @@ spec:
           memory: 64Mi
         limits:
           memory: 128Mi
+      nodeSelector:
+        u25c.io/pool: platform
+      tolerations:
+        - key: u25c.io/pool
+          value: platform
+          effect: NoSchedule
+      priorityClassName: system-cluster-critical
+      # No PDB (single replica, so minAvailable would just block its own
+      # eviction outright) - do-not-disrupt is the only thing standing
+      # between this controller and a consolidation-triggered eviction.
+      podAnnotations:
+        karpenter.sh/do-not-disrupt: "true"
 
     podLabels:
       environment: dev

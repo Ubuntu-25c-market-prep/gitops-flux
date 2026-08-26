@@ -23,6 +23,14 @@ spec:
         any:
           - resources:
               kinds: ["ServiceAccount"]
+      # Karpenter's own ServiceAccount is provisioned by the karpenter
+      # terraform layer, not this repo, and its IRSA role isn't guaranteed to
+      # follow the u25c-{namespace}-* naming this rule enforces elsewhere.
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - karpenter
       validate:
         message: >-
           eks.amazonaws.com/role-arn must reference a role scoped to this
