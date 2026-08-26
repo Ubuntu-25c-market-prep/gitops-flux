@@ -1,0 +1,26 @@
+# gitops-flux/infrastructures/dev/25c-shared/istio-gateway/certificate.yaml
+#
+# Replaces the manually-sealed self-signed cert this Gateway shipped with at
+# install time. Adopts the Certificate object already created live in the
+# cluster - same name/namespace, letsencrypt-staging swapped for
+# letsencrypt-prod so real clients trust the chain rather than just proving
+# the DNS-01/Route53 pipeline works.
+#
+# secretName is deliberately NOT istio-ingressgateway-cert - that name was
+# owned by the SealedSecret controller, and cert-manager fighting a different
+# controller over one Secret object is the exact collision this project hit
+# once already (cert-manager vs the personal lab's own install, same failure
+# shape). A new name avoids it outright rather than relying on ordering.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: wildcard-25c-team1-art
+  namespace: platform-istio
+spec:
+  secretName: wildcard-25c-team1-art-tls
+  dnsNames:
+    - "*.25c-team1.art"
+    - "25c-team1.art"
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer

@@ -29,7 +29,9 @@ spec:
         protocol: HTTPS
       tls:
         mode: SIMPLE
-        credentialName: istio-ingressgateway-cert
+        # cert-manager-issued (letsencrypt-prod), not the manually-sealed
+        # self-signed cert this Gateway launched with - see certificate.yaml.
+        credentialName: wildcard-25c-team1-art-tls
       # "localhost" is deliberately absent - Istio's admission webhook
       # rejects it outright ("short names (non FQDN) are not allowed"),
       # confirmed via `kubectl apply --dry-run=server`. Gateway hosts must
