@@ -6,6 +6,11 @@ patches:
   - path: patch.yaml
     target:
       kind: HelmRelease
+  # Needs its own entry: the patch above targets HelmRelease only, so a
+  # Certificate patch listed there would silently never apply.
+  - path: patch-certificate.yaml
+    target:
+      kind: Certificate
 labels:
   - pairs:
       kustomize.toolkit.fluxcd.io/prune: enabled
