@@ -30,23 +30,23 @@ spec:
       strategy: "anonymous"
 
     # ops-program/docs/node-placement.md: platform pool, same reasoning as
-    # istiod/istio-gateway. affinity, not nodeSelector - the kiali-server
-    # chart (2.30.0) exposes tolerations and affinity as values but has no
-    # nodeSelector field at all (confirmed via `helm show values`); setting
-    # one anyway would be silently ignored rather than erroring. No
-    # priorityClassName either, for the same reason - not on the admission
-    # path like istiod, so left at the chart default rather than adding a
-    # Flux postRenderer for one field.
-    affinity:
-      nodeAffinity:
-        requiredDuringSchedulingIgnoredDuringExecution:
-          nodeSelectorTerms:
-            - matchExpressions:
-                - key: u25c.io/pool
-                  operator: In
-                  values:
-                    - platform
-    tolerations:
-      - key: u25c.io/pool
-        value: platform
-        effect: NoSchedule
+    # istiod/istio-gateway.
+    #
+    # Everything for this chart lives under deployment.* in snake_case -
+    # unlike istiod/istio-gateway, kiali-server has its own top-level
+    # `affinity`/`tolerations` values too, but those only get dumped into
+    # Kiali's own internal config.yaml (its app-level config schema) and
+    # never reach the actual Deployment's pod spec. Confirmed by rendering
+    # the chart locally and grepping the resulting Deployment object - the
+    # first version of this patch set the wrong (top-level) keys, passed
+    # `kubectl apply --dry-run=server` because that only validates the
+    # HelmRelease CR's shape, and silently produced a pod with no
+    # affinity/tolerations at all once it actually rolled out.
+    deployment:
+      node_selector:
+        u25c.io/pool: platform
+      tolerations:
+        - key: u25c.io/pool
+          value: platform
+          effect: NoSchedule
+      priority_class_name: system-cluster-critical
