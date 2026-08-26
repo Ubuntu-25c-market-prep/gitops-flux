@@ -24,18 +24,6 @@ spec:
     remediation:
       retries: 3
   targetNamespace: monitoring
-  # The Thanos sidecar's IRSA role ARN embeds the AWS account id, and this repo
-  # is public, so it is NOT committed. It is supplied by an out-of-band ConfigMap
-  # (prometheus-irsa) in flux-system, created from the terraform output:
-  #
-  #   ARN=$(terraform -chdir=infra-aws/thanos output -raw thanos_role_arn)
-  #   kubectl create configmap prometheus-irsa -n flux-system \
-  #     --from-literal=values.yaml="prometheus:
-  #     serviceAccount:
-  #       annotations:
-  #         eks.amazonaws.com/role-arn: ${ARN}"
-  #
-  # valuesFrom merges after spec.values, so this only sets the SA annotation.
   valuesFrom:
     - kind: ConfigMap
       name: prometheus-irsa
@@ -70,6 +58,21 @@ spec:
         dashboards:
           enabled: true
           searchNamespace: ALL
+      envFromSecrets:
+        - name: grafana-github-oauth
+      grafana.ini:
+        server:
+          root_url: https://grafana.25c-team1.art
+        auth.github:
+          enabled: true
+          allow_sign_up: true
+          client_id: ${client-id}
+          client_secret: ${client-secret}
+          scopes: user:email,read:org
+          auth_url: https://github.com/login/oauth/authorize
+          token_url: https://github.com/login/oauth/access_token
+          api_url: https://github.com/api/user
+          allowed_organizations: Ubuntu-25c-market-prep
     alertmanager:
       alertmanagerSpec:
         storage:
