@@ -1,0 +1,28 @@
+# Environment-specific half of the wildcard certificate.
+#
+# base/cert-manager/certificate-wildcard.yaml deliberately points at
+# letsencrypt-staging and writes to a throwaway Secret. That is not a
+# placeholder someone forgot to change - it is the protection that keeps a
+# cluster which syncs the base library without an overlay from spending the
+# production rate limit (5 duplicate certificates per week per name set, no
+# reset, no appeal). The prod issuer is environment-specific by definition and
+# belongs here, exactly like external-dns's txtOwnerId.
+#
+# Staging has now done its job: order valid, Ready=True, issued by
+# "(STAGING) Baloney Bulgur", which proves the DNS-01 path and the IRSA role
+# end to end. Switching to prod is the correct next step.
+#
+# Changing secretName makes cert-manager issue into a NEW Secret and leave the
+# staging one behind - nothing is overwritten, and the gateway is untouched
+# because it still names istio-ingressgateway-cert. That is what makes this
+# change safe to merge on its own.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: wildcard-25c-team1-art
+  namespace: platform-istio
+spec:
+  issuerRef:
+    kind: ClusterIssuer
+    name: letsencrypt-prod
+  secretName: wildcard-25c-team1-art-tls
