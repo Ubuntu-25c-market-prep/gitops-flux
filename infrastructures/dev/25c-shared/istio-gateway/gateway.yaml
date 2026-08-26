@@ -29,13 +29,18 @@ spec:
         protocol: HTTPS
       tls:
         mode: SIMPLE
-        credentialName: istio-ingressgateway-cert
+        # cert-manager-issued (letsencrypt-prod), not the manually-sealed
+        # self-signed cert this Gateway launched with - gitops-flux#146.
+        credentialName: wildcard-25c-team1-art-tls
       # "localhost" is deliberately absent - Istio's admission webhook
       # rejects it outright ("short names (non FQDN) are not allowed"),
       # confirmed via `kubectl apply --dry-run=server`. Gateway hosts must
       # be FQDN-shaped (at least one dot). For local testing without real
-      # DNS, use curl's --resolve or -H "Host: <name>.nip.io" against the
-      # NLB's IP instead.
+      # DNS, use curl's --resolve against the NLB's IP instead.
+      #
+      # *.nip.io removed with the cert-manager cutover (gitops-flux#146):
+      # Let's Encrypt won't sign a name we don't control, the wildcard
+      # certificate above only covers *.25c-team1.art, and nothing depends
+      # on the nip.io fallback now that real hostnames resolve.
       hosts:
         - "*.25c-team1.art"
-        - "*.nip.io"
