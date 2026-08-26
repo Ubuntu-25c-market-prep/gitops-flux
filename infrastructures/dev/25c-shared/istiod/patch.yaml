@@ -10,6 +10,29 @@ spec:
     # retrofitting a revision after the fact means reinstalling rather than
     # adding a revision.
     revision: "1-30-3"
+    global:
+      proxy:
+        # Chart default requests (cpu: 100m, memory: 128Mi) are already fine
+        # and left alone - only limits change. Default limits (cpu: 2000m,
+        # memory: 1024Mi) are sized for hundreds of proxies across a large
+        # mesh, not this cluster: gitops-argocd#11 hit it directly - one
+        # storefront pod's sidecar alone (2000m/1024Mi) plus its own
+        # container (200m/128Mi) exceeded app-dev's entire 2 CPU / 1Gi
+        # ResourceQuota, and every namespace with a quota was going to
+        # discover this the same way, with a stalled rollout naming a
+        # number nobody chose in any manifest they wrote.
+        #
+        # 500m/256Mi mirrors what #11 already proved out per-pod via
+        # sidecar.istio.io/proxyCPULimit annotations for a low-traffic
+        # service, with headroom above that rather than matching it
+        # exactly, since this is now every future workload's default
+        # rather than one app's tuned override. Anything that genuinely
+        # needs more still overrides per-pod the same way #11 did -
+        # this only changes what an app gets with no annotation at all.
+        resources:
+          limits:
+            cpu: 500m
+            memory: 256Mi
     pilot:
       # Chart default is sized for hundreds of proxies across a large mesh.
       # This cluster is 2x t3.medium; see the istio epic's capacity notes
