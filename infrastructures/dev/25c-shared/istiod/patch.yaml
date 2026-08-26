@@ -32,3 +32,19 @@ spec:
       # sacrificing availability if a zone empties out.
       localityLbSetting:
         enabled: true
+
+    # ops-program/docs/node-placement.md: platform control-plane singletons
+    # belong on the platform pool, not wherever the default scheduler finds
+    # room (which can include the untainted apps pool meant for business
+    # workloads). Same shape already used for kube-prometheus-stack.
+    nodeSelector:
+      u25c.io/pool: platform
+    tolerations:
+      - key: u25c.io/pool
+        value: platform
+        effect: NoSchedule
+    # Istiod is on the admission path (every injected pod's sidecar
+    # depends on it) - the doc calls this out by name after a real
+    # incident where a priority-0 Kyverno pod got preempted by a
+    # DaemonSet rollout.
+    priorityClassName: system-cluster-critical

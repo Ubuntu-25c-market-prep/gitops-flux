@@ -38,3 +38,13 @@ spec:
         # for the istio workstream to make. See the reasoning already written
         # out in base/external-dns/helmrelease.yaml.
         external-dns.alpha.kubernetes.io/hostname: rancher.25c-team1.art,storefront.25c-team1.art
+
+    # ops-program/docs/node-placement.md: platform control-plane singleton,
+    # same reasoning and shape as istiod's patch.yaml.
+    nodeSelector:
+      u25c.io/pool: platform
+    tolerations:
+      - key: u25c.io/pool
+        value: platform
+        effect: NoSchedule
+    priorityClassName: system-cluster-critical

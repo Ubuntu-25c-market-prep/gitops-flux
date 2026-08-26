@@ -28,3 +28,25 @@ spec:
       # exposing it through the ingress gateway; anonymous + a public route
       # means anyone with the URL gets full read access to the mesh.
       strategy: "anonymous"
+
+    # ops-program/docs/node-placement.md: platform pool, same reasoning as
+    # istiod/istio-gateway. affinity, not nodeSelector - the kiali-server
+    # chart (2.30.0) exposes tolerations and affinity as values but has no
+    # nodeSelector field at all (confirmed via `helm show values`); setting
+    # one anyway would be silently ignored rather than erroring. No
+    # priorityClassName either, for the same reason - not on the admission
+    # path like istiod, so left at the chart default rather than adding a
+    # Flux postRenderer for one field.
+    affinity:
+      nodeAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          nodeSelectorTerms:
+            - matchExpressions:
+                - key: u25c.io/pool
+                  operator: In
+                  values:
+                    - platform
+    tolerations:
+      - key: u25c.io/pool
+        value: platform
+        effect: NoSchedule
