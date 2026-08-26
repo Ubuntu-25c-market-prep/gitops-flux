@@ -83,8 +83,13 @@ spec:
               resources:
                 requests:
                   storage: 2Gi
-        # NOT migrated yet — volume is in us-east-1a, pools are in us-east-1b
-        # Recreate the volume in us-east-1b first, then add nodeSelector + tolerations
+        nodeSelector:
+          u25c.io/pool: observability
+        tolerations:
+          - key: u25c.io/pool
+            value: observability
+            effect: NoSchedule
+        priorityClassName: system-cluster-critical
       config:
         route:
           receiver: default
