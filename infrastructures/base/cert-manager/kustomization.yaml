@@ -4,3 +4,4 @@ resources:
   - helmrelease.yaml
   - clusterissuer-staging.yaml
   - clusterissuer-prod.yaml
+  - certificate-wildcard.yaml

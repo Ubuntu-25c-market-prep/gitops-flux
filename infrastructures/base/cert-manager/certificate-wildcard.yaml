@@ -1,0 +1,52 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: wildcard-25c-team1-art
+  # Not cert-manager's own namespace. Istio resolves a Gateway's
+  # credentialName as a Secret in the ingress gateway's namespace, and a
+  # Certificate writes its Secret into its own namespace - so the two have to
+  # agree. Put this in cert-manager instead and issuance succeeds, the Secret
+  # lands where nothing reads it, and the gateway silently keeps serving the
+  # certificate it already had. Nothing errors.
+  namespace: platform-istio
+spec:
+  # Base defaults to staging on purpose. This library is meant to be reusable,
+  # and a cluster that syncs it without an overlay should not be able to spend
+  # the production rate limit - Let's Encrypt allows 5 duplicate certificates
+  # per week per name set, with no reset and no appeal. The dev overlay patches
+  # this to letsencrypt-prod, which is the environment-specific half.
+  issuerRef:
+    # Required. Defaults to "Issuer" (namespaced) when omitted, which would
+    # send cert-manager looking for an Issuer named letsencrypt-staging in
+    # platform-istio - it does not exist there, and the Certificate sits at
+    # Ready=False/IssuerNotFound indefinitely.
+    kind: ClusterIssuer
+    name: letsencrypt-staging
+  # Deliberately NOT istio-ingressgateway-cert yet. The staging run must not
+  # touch the Secret the gateway is serving from. The overlay cutover changes
+  # this line once DNS-01 is proven end to end.
+  secretName: wildcard-25c-team1-art-staging-tls
+  dnsNames:
+    # A wildcard is exactly one label deep and does not cover its own apex:
+    # *.25c-team1.art matches rancher.25c-team1.art but neither
+    # 25c-team1.art nor a.b.25c-team1.art. Hence two entries.
+    - "*.25c-team1.art"
+    - "25c-team1.art"
+    # The certificate this eventually replaces also carries *.nip.io and
+    # localhost. Both are deliberately absent: we do not control those names,
+    # so including either fails the whole ACME order, not just that name.
+  privateKey:
+    # A fresh keypair at every renewal, rather than re-signing the same key
+    # for the lifetime of the platform. Without it a key compromise survives
+    # every future renewal.
+    rotationPolicy: Always
+    # P-256 over RSA-2048: smaller handshakes, universally supported, and
+    # Let's Encrypt signs ECDSA chains. Pinned rather than inherited so a
+    # default change upstream cannot quietly alter what we issue.
+    algorithm: ECDSA
+    size: 256
+  # No duration/renewBefore. Let's Encrypt issues 90-day certificates and
+  # ignores any requested duration, and cert-manager already renews at two
+  # thirds of lifetime. Setting them would make Git assert something the CA
+  # never honours - the same class of mistake as replicaCount in the
+  # external-dns overlay.
