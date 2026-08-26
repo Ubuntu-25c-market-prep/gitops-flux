@@ -72,3 +72,21 @@
 # Security - kyverno, policy-reporter.
 /infrastructures/base/kyverno/                               @Ubuntu-25c-market-prep/security
 /infrastructures/dev/25c-shared/kyverno/                     @Ubuntu-25c-market-prep/security
+
+# Delivery - argo-cd. Added in #140; without these two rules the component
+# falls through to the `*` fallback and the argocd workstream cannot review its
+# own HelmRelease.
+/infrastructures/base/argo-cd/                               @Ubuntu-25c-market-prep/argocd
+/infrastructures/dev/25c-shared/argo-cd/                     @Ubuntu-25c-market-prep/argocd
+
+# The four namespaces that carry `u25c.io/owner: argocd`. File-level rules on
+# purpose: 000-cluster-wide-resources/ stays @flux above, so every OTHER
+# namespace in that directory is unaffected and only these four move.
+#
+# Not listed here, deliberately: clusters/dev/25c-shared/argo-bootstrap.yaml.
+# That is a Flux Kustomization - Flux's own object, on Flux's side of the
+# boundary contract (ADR 0015) - and stays @flux.
+/infrastructures/dev/25c-shared/000-cluster-wide-resources/namespace/app-dev.yaml     @Ubuntu-25c-market-prep/argocd
+/infrastructures/dev/25c-shared/000-cluster-wide-resources/namespace/app-stage.yaml   @Ubuntu-25c-market-prep/argocd
+/infrastructures/dev/25c-shared/000-cluster-wide-resources/namespace/app-prod.yaml    @Ubuntu-25c-market-prep/argocd
+/infrastructures/dev/25c-shared/000-cluster-wide-resources/namespace/argocd.yaml      @Ubuntu-25c-market-prep/argocd

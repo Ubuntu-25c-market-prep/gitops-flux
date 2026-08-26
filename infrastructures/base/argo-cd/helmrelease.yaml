@@ -67,6 +67,25 @@ spec:
         # ingress yet, so reaching this at all requires cluster access.
         admin.enabled: true
 
+        # The base URL Argo CD uses to build every absolute link it emits - UI
+        # deep links, notification links, and the OIDC redirect URI.
+        #
+        # Unset, the chart defaults to https://argocd.example.com, which reads
+        # like real configuration and is not. Nothing consumes this today: there
+        # is no ingress, no notifications controller and no SSO connector. It is
+        # set now because the SSO PR is where a wrong value would surface, and
+        # a redirect URI mismatch is a confusing failure to debug against a
+        # provider that simply refuses the callback.
+        #
+        # The hostname does NOT resolve yet, deliberately. Publishing Argo CD
+        # while `admin.enabled: true` would put a shared password on the public
+        # internet in front of something that can deploy to every namespace.
+        # The VirtualService and the SSO connector should land together, in the
+        # order gitops-flux#137 used for Grafana. This line reserves the name
+        # against the platform convention (<component>.25c-team1.art) so that
+        # PR does not also have to change it.
+        url: https://argocd.25c-team1.art
+
         # ---------------------------------------------------------------------
         # MIGRATING TO SSO LATER - deliberately kept to one PR
         # ---------------------------------------------------------------------
