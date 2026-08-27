@@ -62,22 +62,15 @@ spec:
     # Spot-first pool buys availability nobody is asking for here.
     replicas: 1
 
-    # The gateway serves a SELF-SIGNED certificate (issuer == subject ==
-    # CN=istio-ingress.25c-team1.art, SANs *.25c-team1.art, *.nip.io,
-    # localhost, valid to 2036). Browsers do not trust it and neither would
-    # Rancher's agents, which refuse an untrusted server outright.
-    #
-    # privateCA makes the chart mount the tls-ca secret at
-    # /etc/rancher/ssl/cacerts.pem, and Rancher hands that CA to every agent it
-    # deploys so they trust this specific certificate.
-    #
-    # THIS IS TEMPORARY. When the istio workstream replaces the gateway cert
-    # with a cert-manager/Let's Encrypt one, this MUST flip to false and the
-    # tls-ca secret must be deleted - a publicly trusted chain will not
-    # validate against a bundle containing only the old self-signed CA, and
-    # every agent breaks at once. Whoever swaps that certificate has to change
-    # this file in the same window.
-    privateCA: true
+    # The gateway now serves a cert-manager-issued Let's Encrypt production
+    # certificate (gitops-flux#146), not the self-signed one Rancher was
+    # originally set up to trust. privateCA: true would mount a CA bundle
+    # containing only the OLD self-signed CA - a publicly trusted chain
+    # does not validate against that bundle, so every Rancher agent breaks
+    # at once if this stays true. false means Rancher validates the
+    # gateway's certificate against the system trust store instead, which
+    # already trusts Let's Encrypt.
+    privateCA: false
 
     # Dev sizing. A CPU request but no CPU limit, matching cert-manager and
     # external-dns in this overlay: the request is what the scheduler reserves,

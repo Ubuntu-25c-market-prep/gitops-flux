@@ -7,7 +7,6 @@ kind: Kustomization
 # lives. Where the pods run is set by targetNamespace in the base HelmRelease.
 resources:
   - ../../../base/rancher
-  - tls-ca-sealedsecret.yaml
   - virtualservice.yaml
 patches:
   - path: patch.yaml
