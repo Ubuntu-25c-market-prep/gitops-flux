@@ -1,0 +1,84 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: fluent-bit
+  namespace: flux-system
+spec:
+  values:
+    # A log shipper is useless on a node it cannot reach. An empty toleration
+    # with `operator: Exists` matches EVERY taint, present and future - so a
+    # new NodePool added by @scaling is collected from on day one, with no
+    # change here. Listing the four pool taints individually would silently
+    # skip the fifth.
+    tolerations:
+      - operator: Exists
+    # Node-level agent: it must survive a full node rather than be the first
+    # pod evicted from one. Priority 0 would make it the first to go.
+    priorityClassName: system-node-critical
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        memory: 256Mi
+    # The password Elasticsearch generated for itself, read from the operator's
+    # secret at pod start. Never in git, and rotating it needs no change here.
+    env:
+      - name: ES_PASSWORD
+        valueFrom:
+          secretKeyRef:
+            name: platform-es-elastic-user
+            key: elastic
+    # Elasticsearch serves HTTPS with a certificate signed by its own private
+    # authority, which nothing trusts by default. Mounting the public CA lets
+    # us verify the connection properly instead of disabling the check.
+    extraVolumes:
+      - name: es-certs
+        secret:
+          secretName: platform-es-http-certs-public
+    extraVolumeMounts:
+      - name: es-certs
+        mountPath: /etc/fluent-bit/es-certs
+        readOnly: true
+    config:
+      inputs: |
+        [INPUT]
+            Name tail
+            Path /var/log/containers/*.log
+            multiline.parser docker, cri
+            Tag kube.*
+            Mem_Buf_Limit 5MB
+            Buffer_Max_Size 32KB
+            Skip_Long_Lines On
+
+      filters: |
+        [FILTER]
+            Name kubernetes
+            Match kube.*
+            Merge_Log On
+            Keep_Log Off
+            K8S-Logging.Parser On
+            K8S-Logging.Exclude On
+
+        [FILTER]
+            Name modify
+            Match kube.*
+            Rename ts timestamp
+            Rename time timestamp
+            Rename msg message
+            Rename severity level
+
+      outputs: |
+        [OUTPUT]
+            Name es
+            Match kube.*
+            Host platform-es-http.platform-logging.svc.cluster.local
+            Port 9200
+            tls On
+            tls.ca_file /etc/fluent-bit/es-certs/ca.crt
+            HTTP_User elastic
+            HTTP_Passwd ${ES_PASSWORD}
+            Suppress_Type_Name On
+            Logstash_Format On
+            Logstash_Prefix logs
+            Retry_Limit False
