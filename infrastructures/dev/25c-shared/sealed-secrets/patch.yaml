@@ -14,3 +14,31 @@ spec:
         cpu: 100m
     podLabels:
       environment: dev
+
+    # Placement on the platform Karpenter pool, per
+    # ops-program/docs/node-placement.md. Overlay and not base/, because the
+    # pools are this cluster's - a second cluster syncing the library has no
+    # u25c.io/pool taint to tolerate.
+    #
+    # Safe to restart: the controller's sealing key lives in the
+    # sealed-secrets-key Secret in etcd, not on the pod's disk, so it is
+    # re-read on start and rescheduling loses nothing. While the pod is down,
+    # SealedSecret resources are not unsealed - but the Secrets it has already
+    # written stay put, so nothing that is running notices.
+    #
+    # One Deployment, so one block.
+    nodeSelector:
+      u25c.io/pool: platform
+    tolerations:
+      - key: u25c.io/pool
+        value: platform
+        effect: NoSchedule
+
+    # Top-level, NOT under global: - that is cert-manager's shape, not this
+    # chart's. In the wrong place Helm accepts it, ignores it, and leaves the
+    # pod at priority 0.
+    priorityClassName: system-cluster-critical
+
+    # No podDisruptionBudget, deliberately - single replica, so minAvailable: 1
+    # would permit zero voluntary evictions and deadlock both consolidation and
+    # spot drain. node-placement.md trap #2.
