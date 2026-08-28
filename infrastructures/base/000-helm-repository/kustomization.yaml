@@ -20,3 +20,4 @@ resources:
   - rancher.yaml
   - elastic.yaml
   - metrics-server.yaml
+  - fluent.yaml

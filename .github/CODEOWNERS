@@ -51,7 +51,7 @@
 /infrastructures/base/metrics-server/                        @Ubuntu-25c-market-prep/scaling
 /infrastructures/dev/25c-shared/metrics-server/              @Ubuntu-25c-market-prep/scaling
 
-# Logging - EFK stack (ECK operator and Elasticsearch now; Fluent Bit, Kibana follow).
+# Logging - EFK stack (ECK operator, Elasticsearch and Fluent Bit; Kibana follows).
 #
 # elasticsearch/ is overlay-only and has no base/ counterpart: node count, disk
 # and version are per-cluster decisions. It still needs a rule of its own, for
@@ -61,6 +61,8 @@
 /infrastructures/dev/25c-shared/eck-operator/                @Ubuntu-25c-market-prep/logging
 /infrastructures/dev/25c-shared/elasticsearch/               @Ubuntu-25c-market-prep/logging
 /infrastructures/dev/25c-shared/elasticsearch-ilm/           @Ubuntu-25c-market-prep/logging
+/infrastructures/base/fluent-bit/                            @Ubuntu-25c-market-prep/logging
+/infrastructures/dev/25c-shared/fluent-bit/                  @Ubuntu-25c-market-prep/logging
 
 # Mesh - istio.
 /infrastructures/base/istio-base/                            @Ubuntu-25c-market-prep/istio
