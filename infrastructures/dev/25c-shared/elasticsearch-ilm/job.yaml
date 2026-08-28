@@ -1,0 +1,116 @@
+# gitops-flux/infrastructures/dev/25c-shared/elasticsearch-ilm/job.yaml
+#
+# ILM policies and index templates live INSIDE Elasticsearch, not in
+# Kubernetes, so they can only be created through its HTTP API. ECK's
+# StackConfigPolicy would express them as a Kubernetes object, but it requires
+# an Enterprise licence and this cluster reports eck_license_level: basic - so
+# a Job that calls the API is the remaining option.
+#
+# THE NAME CARRIES A VERSION ON PURPOSE. A Job's pod template is immutable:
+# edit this file and Flux cannot update the Job, it errors. To change the
+# policy, rename to -v2, and Flux prunes the old Job and runs the new one.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: logs-ilm-v1
+spec:
+  # Each attempt waits up to ~5 minutes for Elasticsearch, then exits non-zero
+  # and is retried with backoff. Generous, because on a fresh cluster this Job
+  # can be applied before Elasticsearch has finished starting.
+  backoffLimit: 20
+  template:
+    spec:
+      restartPolicy: OnFailure
+      # Nothing here talks to the Kubernetes API.
+      automountServiceAccountToken: false
+      # Same pool as Elasticsearch. Not required for correctness - it is a
+      # 1GB image and the observability node has already pulled it, so this
+      # avoids a second copy on another machine.
+      nodeSelector:
+        u25c.io/pool: observability
+      tolerations:
+        - key: u25c.io/pool
+          value: observability
+          effect: NoSchedule
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: setup
+          # The Elasticsearch image, reused because it already contains curl
+          # and comes from docker.elastic.co. A curl image from Docker Hub
+          # would be smaller but Docker Hub rate-limits anonymous pulls.
+          image: docker.elastic.co/elasticsearch/elasticsearch:9.5.2
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          env:
+            # Read at pod start from the secret ECK generated. Never in Git.
+            - name: ES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: platform-es-elastic-user
+                  key: elastic
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              memory: 256Mi
+          volumeMounts:
+            - name: config
+              mountPath: /config
+              readOnly: true
+            - name: es-certs
+              mountPath: /certs
+              readOnly: true
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -eu
+              ES="https://platform-es-http.platform-logging.svc:9200"
+              CA="/certs/ca.crt"
+              AUTH="elastic:${ES_PASSWORD}"
+
+              # Elasticsearch may still be starting. Wait up to ~5 minutes,
+              # then fail so the Job's backoff retries rather than hanging.
+              i=0
+              until curl -sf --cacert "$CA" -u "$AUTH" "$ES/_cluster/health" >/dev/null 2>&1; do
+                i=$((i + 1))
+                if [ "$i" -ge 30 ]; then
+                  echo "elasticsearch did not answer after 5 minutes"
+                  exit 1
+                fi
+                echo "waiting for elasticsearch ($i/30)"
+                sleep 10
+              done
+
+              # PUT is idempotent: re-running this Job overwrites the same two
+              # documents with the same content and changes nothing.
+              echo "installing ILM policy logs-retention"
+              curl -sS -f -X PUT --cacert "$CA" -u "$AUTH" \
+                -H 'Content-Type: application/json' \
+                --data-binary @/config/ilm-policy.json \
+                "$ES/_ilm/policy/logs-retention"
+              echo
+
+              echo "installing index template logs"
+              curl -sS -f -X PUT --cacert "$CA" -u "$AUTH" \
+                -H 'Content-Type: application/json' \
+                --data-binary @/config/index-template.json \
+                "$ES/_index_template/logs"
+              echo
+
+              echo "done"
+      volumes:
+        - name: config
+          configMap:
+            name: logs-ilm-config
+        - name: es-certs
+          secret:
+            secretName: platform-es-http-certs-public

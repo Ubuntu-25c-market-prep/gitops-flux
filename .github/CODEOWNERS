@@ -60,6 +60,7 @@
 /infrastructures/base/eck-operator/                          @Ubuntu-25c-market-prep/logging
 /infrastructures/dev/25c-shared/eck-operator/                @Ubuntu-25c-market-prep/logging
 /infrastructures/dev/25c-shared/elasticsearch/               @Ubuntu-25c-market-prep/logging
+/infrastructures/dev/25c-shared/elasticsearch-ilm/           @Ubuntu-25c-market-prep/logging
 /infrastructures/base/fluent-bit/                            @Ubuntu-25c-market-prep/logging
 /infrastructures/dev/25c-shared/fluent-bit/                  @Ubuntu-25c-market-prep/logging
 
