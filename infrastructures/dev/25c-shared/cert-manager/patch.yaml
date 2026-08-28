@@ -5,6 +5,34 @@ metadata:
   namespace: flux-system
 spec:
   values:
+    # Placement on the platform Karpenter pool, per
+    # ops-program/docs/node-placement.md. It lives here and not in base/
+    # because the pools are this cluster's - a second cluster syncing the
+    # library has no u25c.io/pool taint to tolerate. Same split rancher (#107)
+    # and istiod (#143) use.
+    #
+    # cert-manager renders THREE separate Deployments, and the chart gives each
+    # its own nodeSelector/tolerations keys. The top-level pair below moves the
+    # controller ONLY - webhook and cainjector need their own blocks or they
+    # stay on the managed node group while Git claims all three moved.
+    #
+    # Do NOT collapse these into global.nodeSelector, which the chart also
+    # offers and which merges into every component. There is no
+    # global.tolerations to pair with it (checked against v1.21.1: global
+    # exposes imagePullSecrets, nodeSelector, commonLabels, priorityClassName
+    # and rbac, and nothing else). The selector would therefore also land on
+    # the startupapicheck hook Job with nothing to tolerate the pool's taint,
+    # leaving a Job that cannot schedule and a HelmRelease that blocks until
+    # the hook times out.
+    global:
+      # cert-manager reads priorityClassName from global, NOT per-component
+      # the way kyverno and istiod do. Setting it beside each nodeSelector
+      # would be accepted by Helm, silently ignored, and leave all three
+      # deployments at priority 0 - evictable by anything with a class, which
+      # is the exact failure node-placement.md step 3 documents.
+      priorityClassName: system-cluster-critical
+
+    # --- controller ---
     # Dev sizing: one replica of each of the three deployments is enough.
     replicaCount: 1
     resources:
@@ -15,6 +43,18 @@ spec:
         memory: 256Mi
     podLabels:
       environment: dev
+    nodeSelector:
+      u25c.io/pool: platform
+      # The chart's own default for this key is {kubernetes.io/os: linux}, and
+      # a nodeSelector map REPLACES the default rather than merging into it.
+      # Restated so moving the pod does not quietly drop the OS constraint.
+      kubernetes.io/os: linux
+    tolerations:
+      - key: u25c.io/pool
+        value: platform
+        effect: NoSchedule
+
+    # --- webhook ---
     webhook:
       replicaCount: 1
       resources:
@@ -25,6 +65,15 @@ spec:
           memory: 128Mi
       podLabels:
         environment: dev
+      nodeSelector:
+        u25c.io/pool: platform
+        kubernetes.io/os: linux
+      tolerations:
+        - key: u25c.io/pool
+          value: platform
+          effect: NoSchedule
+
+    # --- cainjector ---
     cainjector:
       replicaCount: 1
       resources:
@@ -35,3 +84,25 @@ spec:
           memory: 256Mi
       podLabels:
         environment: dev
+      nodeSelector:
+        u25c.io/pool: platform
+        kubernetes.io/os: linux
+      tolerations:
+        - key: u25c.io/pool
+          value: platform
+          effect: NoSchedule
+
+    # startupapicheck is deliberately left unplaced. It is a post-install/
+    # post-upgrade hook Job, not a running workload, and the managed node group
+    # is untainted so it schedules there without a toleration. Giving it a pool
+    # selector means a Job that cannot start blocks the HelmRelease until the
+    # hook times out.
+
+    # NO podDisruptionBudget, deliberately - this is the one block from the
+    # kyverno patch that must NOT be copied. minAvailable: 1 is correct there
+    # because admissionController runs replicas: 2. All three cert-manager
+    # deployments here run ONE replica, and minAvailable: 1 against a single
+    # replica permits ZERO voluntary evictions: consolidation and spot drain
+    # both stop indefinitely and present as Karpenter being broken.
+    # node-placement.md trap #2. If a PDB is ever wanted here, it has to be
+    # maxUnavailable: 1, or replicaCount raised to 2 first.
