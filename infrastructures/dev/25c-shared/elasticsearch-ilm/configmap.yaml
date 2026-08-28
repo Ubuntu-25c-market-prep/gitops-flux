@@ -1,0 +1,62 @@
+# gitops-flux/infrastructures/dev/25c-shared/elasticsearch-ilm/configmap.yaml
+#
+# The two documents the setup Job PUTs into Elasticsearch. They live here as
+# readable JSON rather than inline in the Job's shell script, so a reviewer
+# reads the policy itself instead of a quoted heredoc.
+#
+# Changing either of these means bumping the Job's name (see job.yaml) - a
+# Job is immutable, so Flux cannot update one in place and would error.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: logs-ilm-config
+data:
+  # Retention. Indices are created one per day by Fluent Bit
+  # (Logstash_Format), so min_age counts from the day the index was created
+  # and no rollover is involved.
+  #
+  # Only hot and delete are used. warm and cold move data onto machines with
+  # different hardware, which needs more than the one node this cluster has;
+  # frozen needs an Enterprise licence and this cluster is on basic.
+  ilm-policy.json: |
+    {
+      "policy": {
+        "phases": {
+          "hot": {
+            "min_age": "0ms",
+            "actions": {
+              "set_priority": {
+                "priority": 100
+              }
+            }
+          },
+          "delete": {
+            "min_age": "7d",
+            "actions": {
+              "delete": {}
+            }
+          }
+        }
+      }
+    }
+
+  # Applied to every index whose name matches logs-* at the moment it is
+  # created. Fluent Bit's output writes logs-YYYY.MM.DD, so every daily index
+  # inherits these three settings.
+  #
+  # number_of_replicas: 0 is not an optimisation, it is a correctness fix.
+  # Elasticsearch defaults to 1 replica, and a replica must be placed on a
+  # DIFFERENT node than its primary. This cluster has one node, so that copy
+  # can never be allocated and every index would sit yellow forever.
+  index-template.json: |
+    {
+      "index_patterns": ["logs-*"],
+      "priority": 100,
+      "template": {
+        "settings": {
+          "number_of_shards": 1,
+          "number_of_replicas": 0,
+          "index.lifecycle.name": "logs-retention"
+        }
+      }
+    }

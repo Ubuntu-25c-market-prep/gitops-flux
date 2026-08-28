@@ -1,0 +1,13 @@
+# gitops-flux/infrastructures/dev/25c-shared/elasticsearch-ilm
+#
+# Overlay-only, no base/: the retention period is a per-cluster decision, the
+# same reasoning elasticsearch/ uses for node count and disk size.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: platform-logging
+resources:
+  - configmap.yaml
+  - job.yaml
+labels:
+  - pairs:
+      kustomize.toolkit.fluxcd.io/prune: enabled

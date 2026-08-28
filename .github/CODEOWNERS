@@ -60,6 +60,7 @@
 /infrastructures/base/eck-operator/                          @Ubuntu-25c-market-prep/logging
 /infrastructures/dev/25c-shared/eck-operator/                @Ubuntu-25c-market-prep/logging
 /infrastructures/dev/25c-shared/elasticsearch/               @Ubuntu-25c-market-prep/logging
+/infrastructures/dev/25c-shared/elasticsearch-ilm/           @Ubuntu-25c-market-prep/logging
 
 # Mesh - istio.
 /infrastructures/base/istio-base/                            @Ubuntu-25c-market-prep/istio
