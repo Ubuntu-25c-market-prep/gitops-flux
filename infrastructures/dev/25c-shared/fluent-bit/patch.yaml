@@ -41,6 +41,16 @@ spec:
         mountPath: /etc/fluent-bit/es-certs
         readOnly: true
     config:
+      # Buffer_Chunk_Size and Buffer_Max_Size are set TOGETHER on purpose.
+      # tail refuses to initialise unless max >= chunk, and Fluent Bit 5's
+      # default chunk size is larger than 32k - so setting only the max
+      # (which this file did when first merged) leaves max < chunk, and every
+      # pod crash-loops with "buffer_max_size must be >= buffer_chunk".
+      # Reproduced and both values verified against fluent/fluent-bit:5.1.1
+      # before this change. Setting both to the same value cannot recreate it.
+      #
+      # 32k is the line cap from ops-program docs/log-schema.md: a longer line
+      # is skipped whole, not truncated.
       inputs: |
         [INPUT]
             Name tail
@@ -48,7 +58,9 @@ spec:
             multiline.parser docker, cri
             Tag kube.*
             Mem_Buf_Limit 5MB
-            Buffer_Max_Size 32KB
+            # Both sizes: tail requires max >= chunk, see the note above.
+            Buffer_Chunk_Size 32k
+            Buffer_Max_Size 32k
             Skip_Long_Lines On
 
       filters: |
