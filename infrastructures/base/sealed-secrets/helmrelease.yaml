@@ -23,3 +23,35 @@ spec:
     serviceAccount:
       create: true
     secretName: "sealed-secrets-key"
+
+    # Key renewal, disabled deliberately.
+    #
+    # The chart leaves this empty (verified with `helm show values` against
+    # 2.19.1), which is not "off" - empty means the controller applies its own
+    # default of 30 days. So the unset field was already a policy: a fresh
+    # keypair every month, each one the sole means of decrypting everything
+    # sealed while it was active.
+    #
+    # That is only safe if every renewal is followed by a backup, because the
+    # controller retains old keys in etcd but the backup in Secrets Manager is
+    # a point-in-time copy. Miss one month and the newest key exists in exactly
+    # one place again - which is the failure this component's backup exists to
+    # prevent. A monthly manual obligation on a 16-person team is not a control,
+    # it is a thing to forget.
+    #
+    # "0" - quoted, the chart requires it as a string - stops renewal. The
+    # current keypair stays active until it is rotated deliberately, which makes
+    # the backup a one-time, verifiable task instead of a recurring one. Key
+    # rotation does not go away; it becomes an explicit operation with a person
+    # attached, per docs/secret-management.md section 5.
+    #
+    # Environment-neutral, so it lives in base: this is the component's own
+    # behaviour, identical for every cluster that installs it, not a fact about
+    # this one.
+    #
+    # Changing this value triggers a Helm upgrade and therefore a controller
+    # restart. The controller re-adopts the existing keys from etcd on startup,
+    # so a restart is not itself dangerous - but never apply it without a
+    # verified backup in place first. See
+    # ops-program/runbooks/sealed-secrets-key-backup-and-restore.md.
+    keyrenewperiod: "0"
