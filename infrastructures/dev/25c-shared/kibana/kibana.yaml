@@ -1,0 +1,42 @@
+# gitops-flux/infrastructures/dev/25c-shared/kibana/kibana.yaml
+# The Kibana instance - an ECK custom resource, reconciled by the eck-operator
+# in this namespace. Overlay-only, no base/: version and sizing are per-cluster
+# decisions and dev upgrades first, the same reasoning elasticsearch/ uses.
+apiVersion: kibana.k8s.elastic.co/v1
+kind: Kibana
+metadata:
+  name: platform
+  namespace: platform-logging
+spec:
+  # Must not be newer than the Elasticsearch it talks to - Kibana refuses to
+  # start against an older Elasticsearch. Bump this only with elasticsearch.yaml.
+  version: 9.5.2
+  count: 1
+  # The whole connection, in one line. ECK creates a dedicated internal user
+  # for Kibana in Elasticsearch, mounts the CA so TLS verifies, and writes the
+  # URL into Kibana's config. No credentials are configured here or committed.
+  elasticsearchRef:
+    name: platform
+  podTemplate:
+    spec:
+      # platform pool, not observability: Kibana holds no volume. The
+      # observability pool exists for workloads whose EBS disk must not be
+      # moved; a stateless UI that can restart anywhere belongs on platform.
+      # Fits the pool's 2 vCPU / 8 GiB ceiling with room.
+      nodeSelector:
+        u25c.io/pool: platform
+      tolerations:
+        - key: u25c.io/pool
+          value: platform
+          effect: NoSchedule
+      priorityClassName: system-cluster-critical
+      containers:
+        - name: kibana
+          resources:
+            requests:
+              cpu: 500m
+              # 1Gi is ECK's documented floor for Kibana. It is a Node.js
+              # application and starts failing health checks below this.
+              memory: 1Gi
+            limits:
+              memory: 1Gi
