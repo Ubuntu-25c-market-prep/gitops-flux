@@ -13,3 +13,25 @@ spec:
         memory: 192Mi
       limits:
         memory: 512Mi
+    # Placement per ADR 0013 / ops-program docs/node-placement.md.
+    #
+    # The operator was installed in #105, before the pools existed, so it has
+    # been sitting on the managed node group ever since. That group is a
+    # bootstrap floor for Karpenter, CoreDNS and Flux and is due to shrink -
+    # leaving it there means being evicted on someone else's schedule.
+    #
+    # platform pool, not observability: the operator holds no volume. It is a
+    # stateless controller, so consolidation moving it costs a restart and
+    # nothing else. Verified the chart exposes all three keys (nodeSelector,
+    # tolerations, priorityClassName) - values a chart does not expose are
+    # silently ignored and Git would claim a placement that never happened.
+    nodeSelector:
+      u25c.io/pool: platform
+    tolerations:
+      - key: u25c.io/pool
+        value: platform
+        effect: NoSchedule
+    # It currently runs at priority 0, so anything with a class can evict it.
+    # A controller that reconciles Elasticsearch should not be the first pod
+    # off a full node (ADR 0013, the 2026-08-24 Kyverno preemption).
+    priorityClassName: system-cluster-critical
