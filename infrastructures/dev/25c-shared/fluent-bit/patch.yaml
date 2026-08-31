@@ -55,6 +55,13 @@ spec:
         [INPUT]
             Name tail
             Path /var/log/containers/*.log
+            # A collector must not collect itself. Every failed flush writes a
+            # warning to this pod's own stdout, which lands in a file this very
+            # input tails - so a failure produces a log line, which produces
+            # load, which produces more failures. Measured before this change:
+            # 218,090 of ~260,000 documents in the cluster were fluent-bit's own
+            # retry warnings. 84% of all ingest was this loop.
+            Exclude_Path /var/log/containers/fluent-bit-*
             multiline.parser docker, cri
             Tag kube.*
             Mem_Buf_Limit 5MB
@@ -93,4 +100,14 @@ spec:
             Suppress_Type_Name On
             Logstash_Format On
             Logstash_Prefix logs
-            Retry_Limit False
+            # Retry_Limit False means retry FOREVER, and it is the chart's
+            # default which this file kept. A chunk Elasticsearch will never
+            # accept is then retried until the end of time, logging a warning
+            # every attempt - which is how ~2000 stuck chunks accumulated in
+            # 12 hours. Five attempts, then drop it and move on.
+            Retry_Limit 5
+            # Prints Elasticsearch's actual response when a flush fails.
+            # Without it the log says only "failed to flush chunk" with no
+            # reason, which is why the cause of those 2000 failures could not
+            # be determined from the outside.
+            Trace_Error On

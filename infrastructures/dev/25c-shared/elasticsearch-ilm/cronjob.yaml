@@ -1,0 +1,136 @@
+# gitops-flux/infrastructures/dev/25c-shared/elasticsearch-ilm/cronjob.yaml
+#
+# ILM policies and index templates live INSIDE Elasticsearch and are reachable
+# only through its HTTP API. ECK's StackConfigPolicy would express them as
+# Kubernetes objects but requires an Enterprise licence; this cluster reports
+# eck_license_level: basic.
+#
+# THIS WAS A ONE-SHOT JOB AND THAT WAS THE WRONG SHAPE. Elasticsearch restarted,
+# x-pack reinstalled its own managed templates, and our template was silently
+# replaced - after which no index got the ILM policy and every index came up
+# yellow with an unassignable replica. A Job runs once and never notices. A
+# CronJob re-asserts the desired state every hour and repairs exactly that.
+#
+# Re-running is safe: PUT is idempotent, so an unchanged cluster is rewritten
+# with identical content.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: logs-ilm
+spec:
+  # Hourly. The run is a few seconds in a container the node already has, so
+  # the cost is noise; the benefit is that any overwrite self-heals within
+  # the hour instead of waiting for a human to notice.
+  schedule: "23 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 5
+      template:
+        spec:
+          restartPolicy: OnFailure
+          automountServiceAccountToken: false
+          # Same pool as Elasticsearch: the image is already pulled there.
+          nodeSelector:
+            u25c.io/pool: observability
+          tolerations:
+            - key: u25c.io/pool
+              value: observability
+              effect: NoSchedule
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: setup
+              # The Elasticsearch image, reused because it already contains
+              # curl and comes from docker.elastic.co. A curl image from
+              # Docker Hub would be smaller but is rate-limited for anonymous
+              # pulls.
+              image: docker.elastic.co/elasticsearch/elasticsearch:9.5.2
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              env:
+                - name: ES_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: platform-es-elastic-user
+                      key: elastic
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 128Mi
+                limits:
+                  memory: 256Mi
+              volumeMounts:
+                - name: config
+                  mountPath: /config
+                  readOnly: true
+                - name: es-certs
+                  mountPath: /certs
+                  readOnly: true
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -eu
+                  ES="https://platform-es-http.platform-logging.svc:9200"
+                  CA="/certs/ca.crt"
+                  AUTH="elastic:${ES_PASSWORD}"
+
+                  i=0
+                  until curl -sf --cacert "$CA" -u "$AUTH" "$ES/_cluster/health" >/dev/null 2>&1; do
+                    i=$((i + 1))
+                    if [ "$i" -ge 30 ]; then
+                      echo "elasticsearch did not answer after 5 minutes"
+                      exit 1
+                    fi
+                    echo "waiting for elasticsearch ($i/30)"
+                    sleep 10
+                  done
+
+                  echo "installing ILM policy logs-retention"
+                  curl -sS -f -X PUT --cacert "$CA" -u "$AUTH" \
+                    -H 'Content-Type: application/json' \
+                    --data-binary @/config/ilm-policy.json \
+                    "$ES/_ilm/policy/logs-retention"
+                  echo
+
+                  # NAME MATTERS. This was called "logs", which is the name of
+                  # a template Elasticsearch ships and manages itself - so
+                  # x-pack overwrote ours on restart. Prefixed names cannot
+                  # collide with a built-in.
+                  echo "installing index template u25c-logs"
+                  curl -sS -f -X PUT --cacert "$CA" -u "$AUTH" \
+                    -H 'Content-Type: application/json' \
+                    --data-binary @/config/index-template.json \
+                    "$ES/_index_template/u25c-logs"
+                  echo
+
+                  # A template only applies when an index is CREATED. Indices
+                  # that already exist keep whatever they were born with, so
+                  # the ones created while the template was missing stay
+                  # yellow and unmanaged forever unless corrected explicitly.
+                  # ignore_unavailable/allow_no_indices keep this a no-op on a
+                  # fresh cluster with no logs-* indices yet.
+                  echo "repairing existing logs-* indices"
+                  curl -sS -f -X PUT --cacert "$CA" -u "$AUTH" \
+                    -H 'Content-Type: application/json' \
+                    --data-binary '{"index.number_of_replicas":0,"index.lifecycle.name":"logs-retention"}' \
+                    "$ES/logs-*/_settings?ignore_unavailable=true&allow_no_indices=true"
+                  echo
+
+                  echo "done"
+          volumes:
+            - name: config
+              configMap:
+                name: logs-ilm-config
+            - name: es-certs
+              secret:
+                secretName: platform-es-http-certs-public

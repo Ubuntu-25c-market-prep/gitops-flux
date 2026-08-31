@@ -1,11 +1,12 @@
 # gitops-flux/infrastructures/dev/25c-shared/elasticsearch-ilm/configmap.yaml
 #
-# The two documents the setup Job PUTs into Elasticsearch. They live here as
-# readable JSON rather than inline in the Job's shell script, so a reviewer
-# reads the policy itself instead of a quoted heredoc.
+# The two documents the setup CronJob PUTs into Elasticsearch. They live here
+# as readable JSON rather than inline in the shell script, so a reviewer reads
+# the policy itself instead of a quoted heredoc.
 #
-# Changing either of these means bumping the Job's name (see job.yaml) - a
-# Job is immutable, so Flux cannot update one in place and would error.
+# Editing either of these is now safe: the CronJob re-reads them on its next
+# hourly run. That was not true of the one-shot Job this replaced, whose pod
+# template was immutable and needed a rename to change anything.
 apiVersion: v1
 kind: ConfigMap
 metadata:
