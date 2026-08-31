@@ -119,6 +119,8 @@ spec:
             Retry_Limit False
             # Prints Elasticsearch's actual response when a flush fails.
             # Without it the log says only "failed to flush chunk" with no
-            # reason, which is why the cause of those 2000 failures could not
-            # be determined from the outside.
+            # reason - which is why the retry churn above (70265 retries
+            # against 74017 records processed) could not be explained from
+            # the outside. Nothing is being lost, but that ratio is not
+            # normal and this is what will identify the cause.
             Trace_Error On
