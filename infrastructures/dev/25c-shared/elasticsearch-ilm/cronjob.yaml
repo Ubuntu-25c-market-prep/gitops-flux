@@ -57,11 +57,21 @@ spec:
                 capabilities:
                   drop: ["ALL"]
               env:
+                # Administrative credential, used only to create the role and
+                # the user below. Fluent Bit itself never sees this one.
                 - name: ES_PASSWORD
                   valueFrom:
                     secretKeyRef:
                       name: platform-es-elastic-user
                       key: elastic
+                # The password Fluent Bit will authenticate with. Generated
+                # outside Git and committed as a SealedSecret, so the plaintext
+                # exists only in the cluster and in whoever generated it.
+                - name: FB_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: fluent-bit-es-credentials
+                      key: password
               resources:
                 requests:
                   cpu: 50m
@@ -119,6 +129,27 @@ spec:
                   # yellow and unmanaged forever unless corrected explicitly.
                   # ignore_unavailable/allow_no_indices keep this a no-op on a
                   # fresh cluster with no logs-* indices yet.
+                  # Role first, then the user that holds it - a user cannot be
+                  # created with a role that does not exist yet.
+                  echo "installing role fluent-bit-writer"
+                  curl -sS -f -X PUT --cacert "$CA" -u "$AUTH" \
+                    -H 'Content-Type: application/json' \
+                    --data-binary @/config/fluent-bit-role.json \
+                    "$ES/_security/role/fluent-bit-writer"
+                  echo
+
+                  # Built inline rather than from a file because it carries the
+                  # password. Both PUTs are idempotent, so a re-run resets the
+                  # user to exactly this state - which also means rotating the
+                  # credential is: reseal the secret, wait for the next run.
+                  echo "installing user fluent-bit"
+                  printf '{"password":"%s","roles":["fluent-bit-writer"],"full_name":"Fluent Bit log shipper"}' \
+                    "$FB_PASSWORD" | curl -sS -f -X PUT --cacert "$CA" -u "$AUTH" \
+                    -H 'Content-Type: application/json' \
+                    --data-binary @- \
+                    "$ES/_security/user/fluent-bit"
+                  echo
+
                   echo "repairing existing logs-* indices"
                   curl -sS -f -X PUT --cacert "$CA" -u "$AUTH" \
                     -H 'Content-Type: application/json' \

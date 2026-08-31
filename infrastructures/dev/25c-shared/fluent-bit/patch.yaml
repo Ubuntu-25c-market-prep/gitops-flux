@@ -27,8 +27,11 @@ spec:
       - name: ES_PASSWORD
         valueFrom:
           secretKeyRef:
-            name: platform-es-elastic-user
-            key: elastic
+            # The fluent-bit user's own credential, not the elastic superuser.
+            # Created by the elasticsearch-ilm CronJob from this same secret,
+            # so both sides read one value and rotation is a single reseal.
+            name: fluent-bit-es-credentials
+            key: password
     # Elasticsearch serves HTTPS with a certificate signed by its own private
     # authority, which nothing trusts by default. Mounting the public CA lets
     # us verify the connection properly instead of disabling the check.
@@ -105,7 +108,11 @@ spec:
             Port 9200
             tls On
             tls.ca_file /etc/fluent-bit/es-certs/ca.crt
-            HTTP_User elastic
+            # Not `elastic`. That is the superuser, and this DaemonSet runs on
+            # every node in the cluster - so every node held a credential that
+            # could delete any index. fluent-bit holds create_index/create/
+            # index on logs-* and nothing else.
+            HTTP_User fluent-bit
             HTTP_Passwd ${ES_PASSWORD}
             Suppress_Type_Name On
             Logstash_Format On
