@@ -69,10 +69,23 @@ data:
       ]
     }
 
+  # priority MUST NOT be 100. Elasticsearch ships a managed template named
+  # `logs` with pattern `logs-*-*` at priority 100. Our `logs-*` overlaps it
+  # (a name like logs-a-b matches both), and Elasticsearch rejects two
+  # overlapping templates at the SAME priority outright:
+  #
+  #   illegal_argument_exception: index template [u25c-logs] has index
+  #   patterns [logs-*] matching patterns from existing templates [logs] with
+  #   patterns (logs => [logs-*-*]) that have the same priority [100],
+  #   multiple index templates may not match during index creation, please
+  #   use a different priority
+  #
+  # 200 wins for any name that matches both, which is what we want for
+  # logs-YYYY.MM.DD. Validated with _index_template/_simulate before use.
   index-template.json: |
     {
       "index_patterns": ["logs-*"],
-      "priority": 100,
+      "priority": 200,
       "template": {
         "settings": {
           "number_of_shards": 1,
