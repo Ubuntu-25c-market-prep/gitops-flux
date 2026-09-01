@@ -82,6 +82,30 @@ data:
   #
   # 200 wins for any name that matches both, which is what we want for
   # logs-YYYY.MM.DD. Validated with _index_template/_simulate before use.
+  # The `mappings` block is not a nicety - without it, logs from a large part
+  # of the platform never arrive at all.
+  #
+  # Kubernetes labels are arbitrary key/value pairs, and most components use
+  # dotted keys like `app.kubernetes.io/name`. Elasticsearch's dynamic mapping
+  # reads those dots as nesting, so `kubernetes.labels.app` is inferred to be
+  # an OBJECT. Any pod carrying a plain `app: something` label then sends a
+  # STRING for that same field, and Elasticsearch rejects the whole document:
+  #
+  #   document_parsing_exception: object mapping for [kubernetes.labels.app]
+  #   tried to parse field [app] as object, but found a concrete value
+  #
+  # Measured on 2026-09-01, before this change: 30 pods across 5 namespaces
+  # had NEVER had a log line indexed - flux-system (all six controllers),
+  # cert-manager, cattle-system, cattle-fleet-system and keda. With
+  # Retry_Limit False those documents were retried forever, which was also
+  # the source of the retry churn (11,396 retries against 369 records).
+  #
+  # `flattened` exists for exactly this shape of data: an object with keys
+  # nobody can predict. The whole subtree is stored as key/value pairs with
+  # one mapping entry, so no key can conflict with another and the field
+  # count cannot explode. Values are exact-match only, which is what you want
+  # for labels anyway. Verified against this cluster: with `flattened`, both
+  # a dotted key and a plain `app` string are accepted in the same index.
   index-template.json: |
     {
       "index_patterns": ["logs-*"],
@@ -91,6 +115,16 @@ data:
           "number_of_shards": 1,
           "number_of_replicas": 0,
           "index.lifecycle.name": "logs-retention"
+        },
+        "mappings": {
+          "properties": {
+            "kubernetes": {
+              "properties": {
+                "labels": { "type": "flattened" },
+                "annotations": { "type": "flattened" }
+              }
+            }
+          }
         }
       }
     }
