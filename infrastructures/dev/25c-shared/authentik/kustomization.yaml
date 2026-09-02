@@ -1,0 +1,28 @@
+# gitops-flux/infrastructures/dev/25c-shared/authentik
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# DELIBERATELY NO `namespace:` LINE - see the argo-cd overlay for the full
+# story. Setting it here rewrites the HelmRelease's own metadata.namespace away
+# from flux-system, and Flux then looks for referenced objects in the wrong
+# namespace. targetNamespace in the base release is what puts the WORKLOAD in
+# platform-auth.
+#
+# NO `patches:` EITHER, and that is not an omission. The two things that would
+# normally differ per environment are already environment-specific by
+# construction: the hostname lives in virtualservice.yaml, which is overlay-only,
+# and the sizing in base is written for this cluster's t3.medium platform pool.
+# server.replicas and worker.replicas are 1 in base because that IS the chart
+# default, not because dev wants something smaller.
+#
+# When a second environment exists, the values that genuinely differ - volume
+# size, replica counts, log level - belong here rather than in base. Adding an
+# empty patch now to reserve the spot would be a file that does nothing.
+
+resources:
+  - ../../../base/authentik
+  - virtualservice.yaml
+
+labels:
+  - pairs:
+      kustomize.toolkit.fluxcd.io/prune: enabled
