@@ -21,3 +21,4 @@ resources:
   - elastic.yaml
   - metrics-server.yaml
   - fluent.yaml
+  - authentik.yaml
