@@ -136,13 +136,20 @@ spec:
         # Everyone in the org can look. Nobody can act without being granted it.
         policy.default: role:readonly
         policy.csv: |
-          g, Ubuntu-25c-market-prep:argocd, role:admin
-          g, Ubuntu-25c-market-prep:cto,    role:admin
+          # Groups come from authentik, not GitHub teams. The names below are
+          # the authentik groups themselves - `security`, `devops`, `pm`, `cto`
+          # - and they must match exactly, including case.
+          #
+          # `security` has no line on purpose. policy.default already gives
+          # everyone role:readonly, which is precisely what that group should
+          # have: see every application, change none.
+          g, cto, role:admin
+          g, pm,  role:admin
 
           p, role:business-deployer, applications, sync, business/*-dev,   allow
           p, role:business-deployer, applications, get,  business/*,       allow
           p, role:business-deployer, applications, sync, business/*-stage, allow
-          g, Ubuntu-25c-market-prep:platform-all, role:business-deployer
+          g, devops, role:business-deployer
         scopes: "[groups]"
 
       params:
