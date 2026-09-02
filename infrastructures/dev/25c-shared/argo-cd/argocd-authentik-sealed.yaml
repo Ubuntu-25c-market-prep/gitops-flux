@@ -1,0 +1,27 @@
+# gitops-flux/infrastructures/dev/25c-shared/argo-cd/argocd-authentik-sealed.yaml
+#
+# The client secret for Argo CD's authentik OIDC connector.
+#
+# THE LABEL IS LOAD-BEARING. Argo CD only resolves `$name:key` references from
+# Secrets carrying app.kubernetes.io/part-of: argocd - without it the reference
+# in oidc.config stays an uninterpolated literal and the login fails claiming
+# the client is unauthorised, which points nowhere near a missing label.
+#
+# Overlay rather than base/, matching the reservation the overlay kustomization
+# has been carrying since #52: the credential belongs to THIS authentik, and a
+# second cluster inheriting base/ must not receive it.
+---
+apiVersion: bitnami.com/v1alpha1
+kind: SealedSecret
+metadata:
+  name: argocd-authentik-oauth
+  namespace: argocd
+spec:
+  encryptedData:
+    clientSecret: AgBny9I3eZKC0XUvyNUGrdT4h1t4v+YpZlyVn2f7SQx9md08Gybr3AYHq3mXa/cIbNMLpwrEIbS4brvXEyPSWK5fpi4k7wZfLbX6THByBVTSow2ex7YuQ/EjwYtfzvNaJGU4kZRQhxuB92nTA8JAXYQV32fD7UztAu9vcduvcop/B2H1QrG3WCamBAgz1OvquJg0VSQ0tj5NItYj8GLd9QAEcG31Em6I7sk8hlw6UxmN8YCjBSF67jpYNkgDecz8HL1D0mBJt0itoINunb8jlSkFt/SzFJgW34uOZQIrdDozsKvmRBVwaA8Te/0d+W62TgxTYWd0wlZRxNLjR0DO/w+38RKXJhIXCjacPvoTES2Td0D68GDD4Xa7DnA4BQfOTllchemmWzTlMosyfddOn0q7CnPgxRZcrz5S394G5UetM9AgLl70rUwd1aG4YbFa/lsohCzhPT3zj70t1xYLOBctEk0uC2A+ikbej2R8XYkxLNtrDlBBAe4Enubte5C/N2sARZNkcQv9U4dSgA1CYIqC5R7WFeotQ+AAeNzPosukDKPcVcpNsd2oDe9Azew0p3yXQigsbrUFVcOISDH4Pbr4kGwi8PeJj5Hvxqb0dV9rSx04wNyHQxTpwLHxi9b2Ml7plGpPrniCfKqPrcPNlNMiCPphxXZbcznlOVmmB8H7loAISSoD1O4LUScPJQOEWzZaHHVQ0HC2TjTrx0HyRBkHxaTVaclohipMgujPPJBXnkGfCz9GQvzdgJN41gVGyEfSpeJI4JYM0IwSYYO5WeVaPRBmTY3ndcUiG3QJfZeiAbijbwuH1ytH7Cyr8YtCozNYxWDkMLx2E8q44A9uQoJvkhGsRxo5vstjj+PoUIHfqg==
+  template:
+    metadata:
+      name: argocd-authentik-oauth
+      namespace: argocd
+      labels:
+        app.kubernetes.io/part-of: argocd

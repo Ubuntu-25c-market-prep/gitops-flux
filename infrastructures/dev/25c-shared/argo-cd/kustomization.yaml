@@ -21,10 +21,11 @@ kind: Kustomization
 
 resources:
   - ../../../base/argo-cd
-  # No sealed secret yet. Argo CD runs on its built-in admin account until the
-  # organisation picks an identity provider (ops-program#52). When it does, the
-  # SealedSecret is added here and admin.enabled is flipped in base - see the
-  # migration note in base/argo-cd/helmrelease.yaml.
+  # The identity provider was picked (authentik, ADR 00NN), so the reservation
+  # this comment used to hold is now filled. admin.enabled stays true for the
+  # moment and comes out in its own commit, once someone other than the author
+  # has logged in through authentik and landed on the right role.
+  - argocd-authentik-sealed.yaml
 
 patches:
   - path: patch.yaml
