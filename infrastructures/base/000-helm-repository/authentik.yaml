@@ -1,0 +1,22 @@
+# gitops-flux/infrastructures/base/000-helm-repository/authentik.yaml
+#
+# Chart source for authentik, the identity provider chosen in ADR 00NN. One
+# source, one chart - unlike elastic.yaml, nothing else is published here that
+# this cluster wants.
+#
+# Classic index.yaml repository, like rancher and cert-manager. No `type: oci`;
+# that line belongs to karpenter alone.
+#
+# Worth knowing before pinning a version in the HelmRelease: authentik uses
+# CalVer and the CHART version equals the APP version (2026.8.1 ships authentik
+# 2026.8.1). So a chart bump is an authentik upgrade, never just a packaging
+# change - read the release notes, because breaking changes do land in minor
+# releases here.
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: authentik
+  namespace: flux-system
+spec:
+  interval: 24h
+  url: https://charts.goauthentik.io
