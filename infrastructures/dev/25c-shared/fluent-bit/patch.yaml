@@ -99,6 +99,18 @@ spec:
             Remove time
             Rename msg message
             Rename severity level
+            # Elastic's own components (Elasticsearch, the ECK operator) log
+            # in ECS format, where the level and logger keys are literally
+            # named `log.level` and `log.logger`. Elasticsearch reads the dot
+            # as nesting, so `log` becomes an object - and `log` is already
+            # the text field every non-JSON line lands in. The document is
+            # rejected, and Retry_Limit False then retries it forever: one
+            # new dead chunk per hour per node, measured 2026-09-02. Same
+            # bug class as the labels fix in #169. Verified against
+            # fluent/fluent-bit:5.1.1 that modify matches the dotted key
+            # literally.
+            Rename log.level level
+            Rename log.logger logger
 
       outputs: |
         [OUTPUT]
