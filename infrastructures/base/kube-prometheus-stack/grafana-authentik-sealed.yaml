@@ -1,0 +1,35 @@
+# gitops-flux/infrastructures/base/kube-prometheus-stack/grafana-authentik-sealed.yaml
+#
+# Grafana's OAuth credentials for authentik (Stage 07 of the SSO rollout).
+#
+# KEY NAMES USE UNDERSCORES AND AN `authentik_` PREFIX, and both halves of that
+# matter:
+#
+#   underscores - Grafana consumes these through envFromSecrets, so each key
+#     becomes an ENVIRONMENT VARIABLE NAME. A hyphen is not legal in one;
+#     Kubernetes drops such keys silently and records InvalidVariableNames. The
+#     pod starts, the variable is simply absent, and the login failure points
+#     nowhere near the cause.
+#
+#   the prefix - grafana-github-oauth already occupies `client_id` and
+#     `client_secret` in that same flattened environment. Reusing them would
+#     have one secret shadow the other, and the symptom would read as bad
+#     credentials rather than as two secrets colliding. The prefix goes away
+#     when auth.github is retired and this can take the plain names.
+#
+# Read out of authentik's own database rather than retyped from the admin UI -
+# the client secret is 128 characters.
+---
+apiVersion: bitnami.com/v1alpha1
+kind: SealedSecret
+metadata:
+  name: grafana-authentik-oauth
+  namespace: monitoring
+spec:
+  encryptedData:
+    authentik_client_id: AgCFCeOt2GTmSIdeERWMolaFjyGwECXIwY26x2739StvCTfkk8ErLZkanZsQkwMkHqbS+J1h4inpT2fwIEFVChGGi6tIY/sQYjXGsGDKlHzQdybuExkOXXEIH4GlVZ5tk3CTK27lp8QF2ktygV/tkHPuR1xWgjREhAaz6P27XhuSOXMAp6qm5LvzUROEgVv2ERnNHkJLfaf3kAYM6FtIQP3Kzkxvhz7HUHVtCeJqOhP/2yMY01uoBAW7nZA+f+oPcyNJtZlqKHFERS2fdjbKM8R5HiRP4f9L8ytrB+H4DOdFDoToT8AkqJyeXGC/U6o3PaPPkXTJxkmQYL0ZNkEPpKJSPLqz/E8lrtm+WNDGsBD6OzTCzuPj4Kn3z9Asoev+Zc4TEUf157EMf4VAyk0piVm21NPCXtpdx+HyzAn9T6eNuhFW8qDWYVwO4+hx725g57QTsQLFEnXXMgt3SCZZgZc5vJnUGTI/jNVSyLya7ljPEuQGBfsPkvbZd6bR7hYKMVjGFVcCsjlqGFnvydeSJHKFnKQ2g0aqQnApmgAPyuO6P8/6b4xVkwD1yHAiHIvF8cZCAgK/2qrb9l/DAbOSDLddC+Sdd+kflEe93jpV7Ah+pc5VjRfs6c7KjVNK4aNZ4sywE5qzDEz75if2dJY2pqgQGhTuNLGaJaLZTJs1Wc5eLgnYHo6O8k/liPxMMRaIGeT+Whi4bWGXiXMMeYeYsEatGZgl1yWhzArCYUnGr9zNiHtWPSsMkA8x
+    authentik_client_secret: AgAlQtTMZmFhDi7x0cX52gLBswfFaBECdyH0pFtNcw6wi0bgWgVHApAosWn0W379+NYS3DeXQIouvB14FnSOlq7jTt1YnJF145V1e6saPeZeJzZmYTAGpsxA3d5tQ6I2eB9XGZNkZlWBS6C1ttAxN2JYaV3mlioDodVG0ulnkNHT95coz8oPl9rASE79yicVhvs8Q8e8XKwAU2xxJbd/Barp1vmFdSNM2tBc5Gf4JLEkhgP6IVVje6U1J7h6ngIf75apKAhuo8Wwy5Z8WK7K07tNaXPwIc9R343uyS+C/DJ1Xo1lSQNoEoJvqcYmcGaaW4xlHlqYDIYQHHX/zajvov5/BqBljoFW4bNPGyZ5WAav0AnKgNlX3H9MOTwj8a2aQyolr8zY9H3agM1A61gB9bmzuNxUXpn8Rbw6KZIHYwNKpf3GHflgC+bhN2//kwIz/KvIrjK9OKp8RLmjBxoWUCEbCuMRJISatrKu0zsaF7UEC8LrUBEXFkcfOdyQzj3BNxDkrqyhiW819kLoIOcuNa+/wuMYLW5ws06Wm/0oYhpwnFR0dPAjkQ7GAqZirQkg7bCIZPj0a92OhKeEaqq2B5itwEROvMPpFe622WL1KmT6WmyY8v6CMh6xmtXvA3H1S/ER0wRjsF0JNTUYKi02MTqfmGQ6F00R+jn5YeziOmFuLSZRwOzFgjPNbXF4BxBXpwU/7vVb28XnAvjHKdJhl1y8W3WZu2i3MyDcOrz9vl3WasGWeZKSUvkcjO+vG1AimQ6tdX7q0uRP60vV0+TX+QYo1MCHFtAaGtI3jwS5a6xx8+k9voLyIn2iY/uNSCj2PyU9CvWPVTnIgOtUz2rbDVksH3isg7ZOmIkqUV7eQCeFRw==
+  template:
+    metadata:
+      name: grafana-authentik-oauth
+      namespace: monitoring

@@ -58,10 +58,56 @@ spec:
         dashboards:
           enabled: true
           searchNamespace: ALL
-      envFromSecret: grafana-github-oauth
+      # Two secrets now, so the singular `envFromSecret` will not do. Both are
+      # flattened into the same environment - see the key-naming note in
+      # grafana-authentik-sealed.yaml for why the authentik keys are prefixed.
+      envFromSecrets:
+        - name: grafana-github-oauth
+        - name: grafana-authentik-oauth
       grafana.ini:
         server:
           root_url: https://grafana.25c-team1.art
+
+        # authentik (Stage 07). Deliberately added ALONGSIDE auth.github rather
+        # than replacing it: Grafana runs both providers at once, so if this
+        # misbehaves nobody is locked out and the rollback is removing these
+        # lines. auth.github comes out in a separate commit once two people in
+        # different groups have logged in and landed on the right roles.
+        auth.generic_oauth:
+          enabled: true
+          name: authentik
+          # New Grafana accounts are created on first login. There is no email
+          # on the authentik accounts (Stage 05 skipped it pending SES), so
+          # these do NOT match anyone's existing GitHub-created account -
+          # personal dashboards will not follow people across. Setting emails
+          # in authentik and re-testing is what fixes that, before auth.github
+          # is removed.
+          allow_sign_up: true
+          client_id: ${authentik_client_id}
+          client_secret: ${authentik_client_secret}
+          scopes: openid profile email
+          # authentik's OIDC endpoints. The trailing slashes are required.
+          auth_url: https://auth.25c-team1.art/application/o/authorize/
+          token_url: https://auth.25c-team1.art/application/o/token/
+          api_url: https://auth.25c-team1.art/application/o/userinfo/
+          # JMESPath over the groups claim, which authentik's default `profile`
+          # scope already carries. Evaluated left to right, first match wins.
+          #
+          # Only cto and pm are named. Everyone else - devops and security both
+          # - falls through to Viewer, which is the intended floor rather than
+          # an accident. There is deliberately no `devops` line: it would map to
+          # Viewer, which is what the fallback already does, and a rule that
+          # changes nothing is a rule someone later assumes is doing something.
+          role_attribute_path: >-
+            contains(groups[*], 'cto') && 'Admin' ||
+            contains(groups[*], 'pm') && 'Admin' ||
+            'Viewer'
+          # Without this a user whose groups match nothing is let in as Viewer
+          # anyway. Left false on purpose: read-only access for an authenticated
+          # colleague is the intended floor, not an error.
+          role_attribute_strict: false
+          use_pkce: true
+
         auth.github:
           enabled: true
           allow_sign_up: true
