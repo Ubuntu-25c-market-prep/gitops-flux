@@ -86,6 +86,23 @@ spec:
           client_id: ${authentik_client_id}
           client_secret: ${authentik_client_secret}
           scopes: openid profile email
+          # Grafana REQUIRES an email for generic_oauth. When userinfo carries
+          # none it falls back to a GitHub-shaped <api_url>/emails endpoint,
+          # authentik has no such route, and the 404 surfaces to the user as
+          # "Login failed - internal error" with nothing pointing at the cause.
+          #
+          # The authentik accounts have no email: Stage 05 created seventeen
+          # users without one while SES was still in sandbox, and authentik's
+          # user-settings flow does not let people add their own. So every
+          # account except the one manually edited would be locked out.
+          #
+          # This maps Grafana's email field onto the username instead. People
+          # appear in Grafana as `sergiidan` rather than an address, which is
+          # cosmetic but wrong, and it is TEMPORARY: once the real addresses are
+          # set on the authentik users, delete this line and Grafana goes back
+          # to matching accounts by email - which is also what makes the
+          # dashboards created under auth.github follow their owners across.
+          email_attribute_path: preferred_username
           # authentik's OIDC endpoints. The trailing slashes are required.
           auth_url: https://auth.25c-team1.art/application/o/authorize/
           token_url: https://auth.25c-team1.art/application/o/token/
