@@ -94,3 +94,8 @@
 /infrastructures/dev/25c-shared/000-cluster-wide-resources/namespace/app-stage.yaml   @Ubuntu-25c-market-prep/argocd
 /infrastructures/dev/25c-shared/000-cluster-wide-resources/namespace/app-prod.yaml    @Ubuntu-25c-market-prep/argocd
 /infrastructures/dev/25c-shared/000-cluster-wide-resources/namespace/argocd.yaml      @Ubuntu-25c-market-prep/argocd
+
+# FinOps - opencost. Added in #49; without these the component falls through
+# to the `*` fallback and the finops workstream cannot review its own HelmRelease.
+/infrastructures/base/opencost/                              @Ubuntu-25c-market-prep/finops
+/infrastructures/dev/25c-shared/opencost/                    @Ubuntu-25c-market-prep/finops

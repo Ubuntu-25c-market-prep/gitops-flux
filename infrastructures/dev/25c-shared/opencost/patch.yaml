@@ -1,0 +1,45 @@
+# gitops-flux/infrastructures/dev/25c-shared/opencost/patch.yaml
+#
+# Dev-only: sizing and node placement.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: opencost
+  namespace: flux-system
+spec:
+  values:
+    # WATCH THE NESTING. In this chart `podLabels` and `priorityClassName` are
+    # top-level, while `nodeSelector`, `tolerations` and `affinity` live under
+    # `opencost:`. Helm silently ignores keys it does not recognise, so a
+    # nodeSelector written up here produces no error and no log line - the pod
+    # just lands on the wrong pool.
+    podLabels:
+      environment: dev
+      workstream: finops
+    opencost:
+      exporter:
+        resources:
+          requests:
+            cpu: 10m
+            memory: 100Mi
+          limits:
+            memory: 512Mi
+      ui:
+        resources:
+          requests:
+            cpu: 10m
+            memory: 55Mi
+          limits:
+            memory: 128Mi
+      # `platform` pool per docs/node-placement.md: OpenCost is a stateless
+      # platform singleton with no PVC, so it does not belong on
+      # `observability` (which exists for pods holding RWO EBS volumes).
+      # BOTH keys are required - the pool is tainted. A selector without a
+      # toleration leaves the pod Pending; a toleration without a selector lets
+      # it land anywhere.
+      nodeSelector:
+        u25c.io/pool: platform
+      tolerations:
+        - key: u25c.io/pool
+          value: platform
+          effect: NoSchedule
