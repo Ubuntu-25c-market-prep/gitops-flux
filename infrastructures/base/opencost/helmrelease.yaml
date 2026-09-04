@@ -1,0 +1,82 @@
+# gitops-flux/infrastructures/base/opencost/helmrelease.yaml
+#
+# OpenCost - per-namespace Kubernetes cost allocation. ADR 0012 chose it over
+# Kubecost: free Kubecost caps history at 15 days and the monthly cost review
+# this workstream owns compares one month against the previous one.
+#
+# It adds no new dependencies. Everything it reads is already running:
+# kube-prometheus-stack (Prometheus), kube-state-metrics and node-exporter.
+# It needs no AWS credentials and no IRSA - node pricing comes from the public
+# AWS price list over plain HTTPS. IRSA would only be needed for Cloud Costs
+# (CUR via Athena), which is out of scope at a $200/month ceiling.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: opencost
+  namespace: flux-system
+spec:
+  # PINNED RELEASE NAME. Without this, Flux derives the Helm release name from
+  # targetNamespace + name and installs it as `monitoring-opencost`, which
+  # renames the Service, the ServiceMonitor and every dashboard URL with it.
+  # That mechanism is why Prometheus's own Service is called
+  # `monitoring-kube-prometheus-stack-prometheus` - see the values below.
+  releaseName: opencost
+  chart:
+    spec:
+      chart: opencost
+      version: "2.5.30"          # app 1.121.1
+      sourceRef:
+        kind: HelmRepository
+        name: opencost
+        namespace: flux-system
+  interval: 20h0m0s
+  install:
+    # The monitoring namespace is owned by 000-cluster-wide-resources, so this
+    # release must not try to create it.
+    createNamespace: false
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      retries: 3
+  targetNamespace: monitoring
+  values:
+    # DO NOT set the chart's top-level `clusterName` here. It reads like a
+    # display name, but the chart substitutes it as the DNS cluster DOMAIN:
+    # with `clusterName: u25c-shared` the rendered endpoint becomes
+    #   http://...prometheus.monitoring.svc.u25c-shared:9090
+    # which never resolves, and OpenCost reports every cost as zero with no
+    # error worth finding. The cluster's identity belongs in
+    # `exporter.defaultClusterId` below, which renders as CLUSTER_ID.
+    # Verified with `helm template` on chart 2.5.30.
+    opencost:
+      prometheus:
+        internal:
+          enabled: true
+          # NOT the chart default `prometheus-server`. This is the real Service
+          # name in this cluster, and it comes from the Flux release-name rule
+          # above. With the default, OpenCost starts healthy, the UI opens, and
+          # every cost is zero - there is no error to find.
+          serviceName: monitoring-kube-prometheus-stack-prometheus
+          namespaceName: monitoring
+          port: 9090
+      exporter:
+        # Labels every metric with this cluster's identity, which is what makes
+        # the data still readable once it is in Thanos alongside another
+        # cluster's blocks.
+        defaultClusterId: u25c-shared
+      metrics:
+        serviceMonitor:
+          enabled: true
+          scrapeInterval: 30s
+          # REQUIRED, not cosmetic. OpenCost's samples already carry their own
+          # `namespace` and `node` labels. Without honorLabels, Prometheus
+          # overwrites `namespace` with the scrape target's namespace, so every
+          # namespace's cost is attributed to `monitoring` and the showback is
+          # wrong without ever looking broken.
+          honorLabels: true
+      ui:
+        # ClusterIP only. Deliberately no Ingress and no VirtualService: the
+        # OpenCost UI has no authentication, and *.25c-team1.art is public.
+        # Grafana is the shared UI (gitops-flux#50); this one is port-forward.
+        enabled: true

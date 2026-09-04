@@ -22,3 +22,4 @@ resources:
   - metrics-server.yaml
   - fluent.yaml
   - authentik.yaml
+  - opencost.yaml
