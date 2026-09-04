@@ -3,11 +3,11 @@ kind: Kustomization
 namespace: monitoring
 resources:
   - ../../../base/kube-prometheus-stack
+  - istio
 patches:
   - path: patch.yaml
     target:
       kind: HelmRelease
-
 labels:
   - pairs:
       kustomize.toolkit.fluxcd.io/prune: enabled
