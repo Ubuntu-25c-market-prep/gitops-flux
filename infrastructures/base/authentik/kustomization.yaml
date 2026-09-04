@@ -1,0 +1,6 @@
+# gitops-flux/infrastructures/base/authentik
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - authentik-secrets-sealed.yaml
+  - helmrelease.yaml

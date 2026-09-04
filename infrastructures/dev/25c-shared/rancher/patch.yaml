@@ -49,6 +49,45 @@ spec:
                   operator: Equal
                   value: platform
                   effect: NoSchedule
+              # Point Rancher's outbound TLS trust at the real root store.
+              #
+              # rancher/rancher:v2.14.3 sets SSL_CERT_DIR=/etc/rancher/ssl in
+              # the IMAGE. With privateCA: false the chart mounts nothing there
+              # and there is no initContainer to populate it, so the directory
+              # does not exist:
+              #
+              #   $ kubectl -n cattle-system exec deploy/rancher -- \
+              #       ls /etc/rancher/ssl/
+              #   ls: cannot access '/etc/rancher/ssl/': No such file or directory
+              #
+              # SSL_CERT_DIR is honoured by OpenSSL and by Go's crypto/x509,
+              # and it REPLACES the default search path rather than adding to
+              # it. So Rancher's entire outbound trust store is empty and every
+              # server-to-server HTTPS call fails to verify, while the browser
+              # leg - which never touches this - works fine. That asymmetry is
+              # why this reads as "SSO is broken" rather than as a TLS problem:
+              #
+              #   $ kubectl -n cattle-system exec deploy/rancher -- \
+              #       curl -sS https://auth.25c-team1.art/application/o/token/
+              #   curl: (60) SSL certificate problem: unable to get local
+              #         issuer certificate
+              #
+              # /etc/ssl/certs in this image is complete and current - it
+              # carries ISRG_Root_X1.pem and ISRG_Root_X2.pem, which is what
+              # the gateway's Let's Encrypt chain needs (leaf -> YE2 ->
+              # Root YE -> ISRG Root X2, cross-signed by ISRG Root X1). With
+              # this override the same two calls return 405 and 401 - real
+              # answers from authentik rather than a TLS failure.
+              #
+              # THIS SUPERSEDES privateCA. If anyone ever sets privateCA: true
+              # to trust a private issuer, the bundle lands in /etc/rancher/ssl
+              # and this line makes Rancher ignore it. Remove this override at
+              # the same time, or the private CA will silently do nothing.
+              - op: add
+                path: /spec/template/spec/containers/0/env/-
+                value:
+                  name: SSL_CERT_DIR
+                  value: /etc/ssl/certs
 
   values:
     # The name published by external-dns from the istio ingressgateway Service

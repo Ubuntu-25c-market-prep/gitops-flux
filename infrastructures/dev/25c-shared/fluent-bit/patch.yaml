@@ -27,8 +27,11 @@ spec:
       - name: ES_PASSWORD
         valueFrom:
           secretKeyRef:
-            name: platform-es-elastic-user
-            key: elastic
+            # The fluent-bit user's own credential, not the elastic superuser.
+            # Created by the elasticsearch-ilm CronJob from this same secret,
+            # so both sides read one value and rotation is a single reseal.
+            name: fluent-bit-es-credentials
+            key: password
     # Elasticsearch serves HTTPS with a certificate signed by its own private
     # authority, which nothing trusts by default. Mounting the public CA lets
     # us verify the connection properly instead of disabling the check.
@@ -41,14 +44,33 @@ spec:
         mountPath: /etc/fluent-bit/es-certs
         readOnly: true
     config:
+      # Buffer_Chunk_Size and Buffer_Max_Size are set TOGETHER on purpose.
+      # tail refuses to initialise unless max >= chunk, and Fluent Bit 5's
+      # default chunk size is larger than 32k - so setting only the max
+      # (which this file did when first merged) leaves max < chunk, and every
+      # pod crash-loops with "buffer_max_size must be >= buffer_chunk".
+      # Reproduced and both values verified against fluent/fluent-bit:5.1.1
+      # before this change. Setting both to the same value cannot recreate it.
+      #
+      # 32k is the line cap from ops-program docs/log-schema.md: a longer line
+      # is skipped whole, not truncated.
       inputs: |
         [INPUT]
             Name tail
             Path /var/log/containers/*.log
+            # A collector must not collect itself. Every failed flush writes a
+            # warning to this pod's own stdout, which lands in a file this very
+            # input tails - so a failure produces a log line, which produces
+            # load, which produces more failures. Measured before this change:
+            # 218,090 of ~260,000 documents in the cluster were fluent-bit's own
+            # retry warnings. 84% of all ingest was this loop.
+            Exclude_Path /var/log/containers/fluent-bit-*
             multiline.parser docker, cri
             Tag kube.*
             Mem_Buf_Limit 5MB
-            Buffer_Max_Size 32KB
+            # Both sizes: tail requires max >= chunk, see the note above.
+            Buffer_Chunk_Size 32k
+            Buffer_Max_Size 32k
             Skip_Long_Lines On
 
       filters: |
@@ -64,7 +86,17 @@ spec:
             Name modify
             Match kube.*
             Rename ts timestamp
-            Rename time timestamp
+            # Remove, not rename. `time` is the container runtime's own
+            # prefix on every CRI log line, and Fluent Bit already uses it as
+            # the record's time - which the Elasticsearch output writes as
+            # @timestamp. Renaming it to `timestamp` therefore stamped a
+            # duplicate of @timestamp onto every single document. Verified
+            # against fluent/fluent-bit:5.1.1 with a real CRI-format line.
+            #
+            # `ts` above is kept: that is an application's own claim about
+            # when the event happened, which is genuinely different from when
+            # the runtime wrote the line.
+            Remove time
             Rename msg message
             Rename severity level
 
@@ -76,9 +108,26 @@ spec:
             Port 9200
             tls On
             tls.ca_file /etc/fluent-bit/es-certs/ca.crt
-            HTTP_User elastic
+            # Not `elastic`. That is the superuser, and this DaemonSet runs on
+            # every node in the cluster - so every node held a credential that
+            # could delete any index. fluent-bit holds create_index/create/
+            # index on logs-* and nothing else.
+            HTTP_User fluent-bit
             HTTP_Passwd ${ES_PASSWORD}
             Suppress_Type_Name On
             Logstash_Format On
             Logstash_Prefix logs
+            # Retry_Limit False means retry forever, and it stays that way
+            # deliberately. Fluent Bit's own metrics show retries=70265 with
+            # retries_failed=0 and dropped_records=0: chunks are retried a
+            # great deal but every one eventually lands. A finite limit would
+            # convert that into real data loss the first time Elasticsearch is
+            # unavailable for longer than the limit allows.
             Retry_Limit False
+            # Prints Elasticsearch's actual response when a flush fails.
+            # Without it the log says only "failed to flush chunk" with no
+            # reason - which is why the retry churn above (70265 retries
+            # against 74017 records processed) could not be explained from
+            # the outside. Nothing is being lost, but that ratio is not
+            # normal and this is what will identify the cause.
+            Trace_Error On

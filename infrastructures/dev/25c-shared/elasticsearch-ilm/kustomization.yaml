@@ -7,7 +7,7 @@ kind: Kustomization
 namespace: platform-logging
 resources:
   - configmap.yaml
-  - job.yaml
+  - cronjob.yaml
 labels:
   - pairs:
       kustomize.toolkit.fluxcd.io/prune: enabled

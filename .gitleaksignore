@@ -1,3 +1,0 @@
-# SealedSecret encryptedData — values are encrypted by kubeseal, safe to commit
-3084328cf82c8072803aed66a26630786e01795b:infrastructures/base/kube-prometheus-stack/grafana-github-oauth-sealed.yaml:generic-api-key:10
-093d6f0a1a98b01e3bde8c3da71f73f3c4322a30:infrastructures/base/kube-prometheus-stack/grafana-github-oauth-sealed.yaml:generic-api-key:10

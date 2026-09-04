@@ -63,6 +63,7 @@
 /infrastructures/dev/25c-shared/elasticsearch-ilm/           @Ubuntu-25c-market-prep/logging
 /infrastructures/base/fluent-bit/                            @Ubuntu-25c-market-prep/logging
 /infrastructures/dev/25c-shared/fluent-bit/                  @Ubuntu-25c-market-prep/logging
+/infrastructures/dev/25c-shared/kibana/                      @Ubuntu-25c-market-prep/logging
 
 # Mesh - istio.
 /infrastructures/base/istio-base/                            @Ubuntu-25c-market-prep/istio

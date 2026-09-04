@@ -1,0 +1,31 @@
+# gitleaks configuration for gitops-flux.
+#
+# useDefault keeps every built-in rule. Without it this file would REPLACE
+# the default ruleset and the scan would quietly find nothing at all - a
+# worse outcome than the false positives it exists to silence.
+[extend]
+useDefault = true
+
+# SealedSecret payloads are ciphertext. kubeseal encrypts them with the
+# cluster's public key and only the in-cluster controller holds the private
+# half, which is the entire reason they are safe to commit. gitleaks has no
+# way to know that: it sees a long base64 value next to a key named
+# `password` or `client_secret` and reports generic-api-key.
+#
+# This replaces the per-commit fingerprints that were in .gitleaksignore.
+# Those do not survive a squash merge: a fingerprint names the commit the
+# finding was seen in, the merge produces a different SHA, the fingerprint
+# stops matching, and main goes red the moment the PR lands.
+#
+# That is not hypothetical. grafana-github-oauth-sealed.yaml carries two
+# fingerprints for one finding for exactly this reason, and fluent-bit's
+# sealed-secret.yaml turned main red again when #166 merged.
+#
+# A path rule needs no maintenance and covers every SealedSecret this
+# repository will ever hold.
+[allowlist]
+description = "SealedSecret encryptedData is ciphertext, safe to commit"
+paths = [
+  '''sealed-secret\.yaml$''',
+  '''-sealed\.yaml$''',
+]

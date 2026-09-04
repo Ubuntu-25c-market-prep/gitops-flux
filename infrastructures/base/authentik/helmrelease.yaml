@@ -1,0 +1,148 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: authentik
+  namespace: flux-system
+spec:
+  interval: 20h0m0s
+  releaseName: authentik
+  targetNamespace: platform-auth
+  install:
+    # Namespace comes from 000-cluster-wide-resources, not the chart, so one
+    # controller owns the object - the same arrangement teleport uses.
+    createNamespace: false
+    remediation:
+      retries: 3
+    # First install runs the full Django migration set against an empty
+    # database before the server reports ready. The chart default 5m is not
+    # enough on a t3.medium; teleport and kube-prometheus-stack both hit the
+    # same wall.
+    timeout: 10m
+  upgrade:
+    remediation:
+      retries: 3
+      strategy: rollback
+    timeout: 10m
+  chart:
+    spec:
+      chart: authentik
+      # Pinned exactly. authentik uses CalVer and the CHART version IS the APP
+      # version, so bumping this upgrades authentik itself. Breaking changes do
+      # land in minor releases here - read the release notes, do not batch this
+      # with an unrelated change.
+      version: "2026.8.1"
+      sourceRef:
+        kind: HelmRepository
+        name: authentik
+        namespace: flux-system
+  values:
+    global:
+      # Applies to the server and worker together. Per-component nodeSelector
+      # and tolerations also exist and would work, but they default to these,
+      # so setting them once is one fewer place to forget. The PostgreSQL
+      # subchart does NOT read this - Helm globals only reach a subchart that
+      # asks for them, and Bitnami's does not. It gets its own copy below.
+      nodeSelector:
+        u25c.io/pool: platform
+      tolerations:
+        - key: u25c.io/pool
+          value: platform
+          effect: NoSchedule
+
+      # How the secrets actually arrive.
+      #
+      # The chart renders EVERYTHING under `authentik:` into a Secret of its own
+      # and mounts it with envFrom. This block is appended to that same envFrom
+      # list, AFTER the chart's own entry, and Kubernetes lets the later source
+      # win on a duplicate key. So the non-sensitive settings below stay
+      # readable in Git, and only the two secret values come from ciphertext.
+      #
+      # The alternative the chart offers, authentik.existingSecret, replaces the
+      # whole block - it would force log_level and the postgres hostname into
+      # the sealed secret too, where nobody can review them.
+      #
+      # VERIFY THIS AFTER FIRST DEPLOY. If the override ever stopped working the
+      # server would start with an empty signing key rather than fail loudly:
+      #   kubectl -n platform-auth exec deploy/authentik-server -- \
+      #     sh -c 'echo ${#AUTHENTIK_SECRET_KEY}'
+      # A number near 100 is right. Zero means this block is not taking effect.
+      envFrom:
+        - secretRef:
+            name: authentik-secrets
+
+    authentik:
+      # Non-sensitive configuration only. The password and signing key are
+      # injected by global.envFrom above and are deliberately absent here.
+      log_level: info
+      error_reporting:
+        # Off. This ships exception data to a third party, which is not a
+        # decision to make silently for the service holding every login.
+        enabled: false
+      # postgresql.host is left unset on purpose: the chart templates it to
+      # `{{ .Release.Name }}-postgresql`, which is the service the subchart
+      # below creates. Writing it out by hand would be a second place to keep
+      # in step with releaseName.
+      postgresql:
+        name: authentik
+        user: authentik
+
+    server:
+      # No ingress. Routing is an Istio VirtualService in the dev overlay,
+      # matching rancher - the chart default is already false, stated here so
+      # nobody adds one by reflex.
+      ingress:
+        enabled: false
+      # Kyverno rejects containers without both requests and limits.
+      # Sized for the platform pool, whose nodes are t3.medium.
+      resources:
+        requests:
+          cpu: 100m
+          memory: 512Mi
+        limits:
+          memory: 1Gi
+
+    worker:
+      # Runs migrations, outpost reconciliation and, since Redis was dropped,
+      # the Postgres-backed task queue. Sized like the server rather than
+      # smaller: it is what does the work during an upgrade.
+      resources:
+        requests:
+          cpu: 100m
+          memory: 512Mi
+        limits:
+          memory: 1Gi
+
+    postgresql:
+      # The chart ships this disabled. authentik keeps every user, group, MFA
+      # enrolment and session here, so losing this volume loses the directory -
+      # see the backup note in the runbook before this outlives evaluation.
+      enabled: true
+      auth:
+        # Bitnami reads `password` (the authentik user) and `postgres-password`
+        # (the superuser) from this Secret. Different values on purpose: an
+        # application credential should not also be a superuser credential.
+        existingSecret: authentik-postgresql
+        username: authentik
+        database: authentik
+      primary:
+        persistence:
+          enabled: true
+          storageClass: ebs-csi-default-sc
+          size: 8Gi
+        # Helm globals do not reach this subchart, so the pool placement is
+        # repeated rather than inherited.
+        nodeSelector:
+          u25c.io/pool: platform
+        tolerations:
+          - key: u25c.io/pool
+            value: platform
+            effect: NoSchedule
+        # The authentik chart sets resourcesPreset "none", overriding Bitnami's
+        # "nano" default. That leaves the pod with no requests or limits at all,
+        # which Kyverno refuses - so these are required, not tuning.
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            memory: 512Mi

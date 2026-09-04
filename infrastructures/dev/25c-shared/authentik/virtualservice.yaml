@@ -1,0 +1,35 @@
+# gitops-flux/infrastructures/dev/25c-shared/authentik/virtualservice.yaml
+#
+# The routing half. The shared Gateway (istio-gateway overlay) already accepts
+# *.25c-team1.art on 443 with the wildcard certificate; nothing yet said where
+# auth.25c-team1.art should GO, so that hostname returns Istio's 404 today.
+#
+# This lives in the authentik overlay rather than the istio-gateway one, the
+# same call rancher's route documents: the Gateway is shared infrastructure, but
+# the route for one hostname belongs with the thing it routes to. Deleting this
+# directory removes authentik and its route together.
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: authentik
+  namespace: platform-auth
+spec:
+  hosts:
+    - auth.25c-team1.art
+  # <namespace>/<name> of the shared Gateway. A bare name would resolve in this
+  # VirtualService's own namespace, where no Gateway exists, and the route would
+  # silently attach to nothing.
+  gateways:
+    - platform-istio/ingressgateway
+  http:
+    - route:
+        - destination:
+            # Plain HTTP - TLS terminated at the gateway. The chart's service is
+            # ClusterIP on 80 by default.
+            host: authentik-server.platform-auth.svc.cluster.local
+            port:
+              number: 80
+      # NO `timeout` field, deliberately. Istio's default is no timeout, and
+      # `timeout: 0s` does not express that - CRD validation rejects it outright,
+      # and a resource that fails dry-run rejects the ENTIRE Kustomization,
+      # stopping every workstream. Same trap rancher's route documents.

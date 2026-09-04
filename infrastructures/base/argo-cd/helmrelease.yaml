@@ -86,6 +86,29 @@ spec:
         # PR does not also have to change it.
         url: https://argocd.25c-team1.art
 
+        # authentik OIDC (Stage 08). NOT Dex - the migration note below was
+        # written when Dex was the plan; it is not, and dex.enabled stays false.
+        #
+        # `issuer` is per-application in authentik and ends with the application
+        # SLUG plus a trailing slash. Getting either wrong produces a discovery
+        # failure that reads as though authentik were unreachable.
+        #
+        # clientSecret is a `$secretname:key` reference, resolved from the
+        # SealedSecret in the dev overlay. That Secret must carry
+        # app.kubernetes.io/part-of: argocd or Argo CD will not look at it.
+        oidc.config: |
+          name: authentik
+          issuer: https://auth.25c-team1.art/application/o/argocd/
+          clientID: yC6f8dLu90moefc5wGA1dOzaj4UppyuFomVK3Lif
+          clientSecret: $argocd-authentik-oauth:clientSecret
+          requestedScopes:
+            - openid
+            - profile
+            - email
+          requestedIDTokenClaims:
+            groups:
+              essential: true
+
         # ---------------------------------------------------------------------
         # MIGRATING TO SSO LATER - deliberately kept to one PR
         # ---------------------------------------------------------------------
@@ -136,13 +159,20 @@ spec:
         # Everyone in the org can look. Nobody can act without being granted it.
         policy.default: role:readonly
         policy.csv: |
-          g, Ubuntu-25c-market-prep:argocd, role:admin
-          g, Ubuntu-25c-market-prep:cto,    role:admin
+          # Groups come from authentik, not GitHub teams. The names below are
+          # the authentik groups themselves - `security`, `devops`, `pm`, `cto`
+          # - and they must match exactly, including case.
+          #
+          # `security` has no line on purpose. policy.default already gives
+          # everyone role:readonly, which is precisely what that group should
+          # have: see every application, change none.
+          g, cto, role:admin
+          g, pm,  role:admin
 
           p, role:business-deployer, applications, sync, business/*-dev,   allow
           p, role:business-deployer, applications, get,  business/*,       allow
           p, role:business-deployer, applications, sync, business/*-stage, allow
-          g, Ubuntu-25c-market-prep:platform-all, role:business-deployer
+          g, devops, role:business-deployer
         scopes: "[groups]"
 
       params:

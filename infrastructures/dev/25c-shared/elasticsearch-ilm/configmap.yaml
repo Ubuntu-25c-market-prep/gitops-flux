@@ -1,11 +1,12 @@
 # gitops-flux/infrastructures/dev/25c-shared/elasticsearch-ilm/configmap.yaml
 #
-# The two documents the setup Job PUTs into Elasticsearch. They live here as
-# readable JSON rather than inline in the Job's shell script, so a reviewer
-# reads the policy itself instead of a quoted heredoc.
+# The two documents the setup CronJob PUTs into Elasticsearch. They live here
+# as readable JSON rather than inline in the shell script, so a reviewer reads
+# the policy itself instead of a quoted heredoc.
 #
-# Changing either of these means bumping the Job's name (see job.yaml) - a
-# Job is immutable, so Flux cannot update one in place and would error.
+# Editing either of these is now safe: the CronJob re-reads them on its next
+# hourly run. That was not true of the one-shot Job this replaced, whose pod
+# template was immutable and needed a rename to change anything.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -48,15 +49,82 @@ data:
   # Elasticsearch defaults to 1 replica, and a replica must be placed on a
   # DIFFERENT node than its primary. This cluster has one node, so that copy
   # can never be allocated and every index would sit yellow forever.
+  # The role Fluent Bit runs as. Modelled on ECK's own service accounts -
+  # elastic_internal_probe_user has `cluster: [monitor]` and `indices: []`,
+  # because a health checker needs no data access at all.
+  #
+  # Fluent Bit needs exactly two things: to create today's index, and to put
+  # documents in it. Deliberately absent: `read` (it never searches), `delete`
+  # and `manage` (it must not be able to remove logs), and any pattern other
+  # than logs-*. It previously ran as `elastic`, which could do all of those
+  # to every index in the cluster, from every node in the cluster.
+  fluent-bit-role.json: |
+    {
+      "cluster": ["monitor"],
+      "indices": [
+        {
+          "names": ["logs-*"],
+          "privileges": ["create_index", "create", "index"]
+        }
+      ]
+    }
+
+  # priority MUST NOT be 100. Elasticsearch ships a managed template named
+  # `logs` with pattern `logs-*-*` at priority 100. Our `logs-*` overlaps it
+  # (a name like logs-a-b matches both), and Elasticsearch rejects two
+  # overlapping templates at the SAME priority outright:
+  #
+  #   illegal_argument_exception: index template [u25c-logs] has index
+  #   patterns [logs-*] matching patterns from existing templates [logs] with
+  #   patterns (logs => [logs-*-*]) that have the same priority [100],
+  #   multiple index templates may not match during index creation, please
+  #   use a different priority
+  #
+  # 200 wins for any name that matches both, which is what we want for
+  # logs-YYYY.MM.DD. Validated with _index_template/_simulate before use.
+  # The `mappings` block is not a nicety - without it, logs from a large part
+  # of the platform never arrive at all.
+  #
+  # Kubernetes labels are arbitrary key/value pairs, and most components use
+  # dotted keys like `app.kubernetes.io/name`. Elasticsearch's dynamic mapping
+  # reads those dots as nesting, so `kubernetes.labels.app` is inferred to be
+  # an OBJECT. Any pod carrying a plain `app: something` label then sends a
+  # STRING for that same field, and Elasticsearch rejects the whole document:
+  #
+  #   document_parsing_exception: object mapping for [kubernetes.labels.app]
+  #   tried to parse field [app] as object, but found a concrete value
+  #
+  # Measured on 2026-09-01, before this change: 30 pods across 5 namespaces
+  # had NEVER had a log line indexed - flux-system (all six controllers),
+  # cert-manager, cattle-system, cattle-fleet-system and keda. With
+  # Retry_Limit False those documents were retried forever, which was also
+  # the source of the retry churn (11,396 retries against 369 records).
+  #
+  # `flattened` exists for exactly this shape of data: an object with keys
+  # nobody can predict. The whole subtree is stored as key/value pairs with
+  # one mapping entry, so no key can conflict with another and the field
+  # count cannot explode. Values are exact-match only, which is what you want
+  # for labels anyway. Verified against this cluster: with `flattened`, both
+  # a dotted key and a plain `app` string are accepted in the same index.
   index-template.json: |
     {
       "index_patterns": ["logs-*"],
-      "priority": 100,
+      "priority": 200,
       "template": {
         "settings": {
           "number_of_shards": 1,
           "number_of_replicas": 0,
           "index.lifecycle.name": "logs-retention"
+        },
+        "mappings": {
+          "properties": {
+            "kubernetes": {
+              "properties": {
+                "labels": { "type": "flattened" },
+                "annotations": { "type": "flattened" }
+              }
+            }
+          }
         }
       }
     }
