@@ -58,83 +58,21 @@ spec:
         dashboards:
           enabled: true
           searchNamespace: ALL
-      # Two secrets now, so the singular `envFromSecret` will not do. Both are
-      # flattened into the same environment - see the key-naming note in
-      # grafana-authentik-sealed.yaml for why the authentik keys are prefixed.
-      envFromSecrets:
-        - name: grafana-github-oauth
-        - name: grafana-authentik-oauth
+      envFromSecret: grafana-authentik-oauth
       grafana.ini:
         server:
           root_url: https://grafana.25c-team1.art
-
-        # authentik (Stage 07). Deliberately added ALONGSIDE auth.github rather
-        # than replacing it: Grafana runs both providers at once, so if this
-        # misbehaves nobody is locked out and the rollback is removing these
-        # lines. auth.github comes out in a separate commit once two people in
-        # different groups have logged in and landed on the right roles.
         auth.generic_oauth:
           enabled: true
-          name: authentik
-          # New Grafana accounts are created on first login. There is no email
-          # on the authentik accounts (Stage 05 skipped it pending SES), so
-          # these do NOT match anyone's existing GitHub-created account -
-          # personal dashboards will not follow people across. Setting emails
-          # in authentik and re-testing is what fixes that, before auth.github
-          # is removed.
+          name: Authentik
           allow_sign_up: true
           client_id: ${authentik_client_id}
           client_secret: ${authentik_client_secret}
           scopes: openid profile email
-          # Grafana REQUIRES an email for generic_oauth. When userinfo carries
-          # none it falls back to a GitHub-shaped <api_url>/emails endpoint,
-          # authentik has no such route, and the 404 surfaces to the user as
-          # "Login failed - internal error" with nothing pointing at the cause.
-          #
-          # The authentik accounts have no email: Stage 05 created seventeen
-          # users without one while SES was still in sandbox, and authentik's
-          # user-settings flow does not let people add their own. So every
-          # account except the one manually edited would be locked out.
-          #
-          # This maps Grafana's email field onto the username instead. People
-          # appear in Grafana as `sergiidan` rather than an address, which is
-          # cosmetic but wrong, and it is TEMPORARY: once the real addresses are
-          # set on the authentik users, delete this line and Grafana goes back
-          # to matching accounts by email - which is also what makes the
-          # dashboards created under auth.github follow their owners across.
-          email_attribute_path: preferred_username
-          # authentik's OIDC endpoints. The trailing slashes are required.
           auth_url: https://auth.25c-team1.art/application/o/authorize/
           token_url: https://auth.25c-team1.art/application/o/token/
           api_url: https://auth.25c-team1.art/application/o/userinfo/
-          # JMESPath over the groups claim, which authentik's default `profile`
-          # scope already carries. Evaluated left to right, first match wins.
-          #
-          # Only cto and pm are named. Everyone else - devops and security both
-          # - falls through to Viewer, which is the intended floor rather than
-          # an accident. There is deliberately no `devops` line: it would map to
-          # Viewer, which is what the fallback already does, and a rule that
-          # changes nothing is a rule someone later assumes is doing something.
-          role_attribute_path: >-
-            contains(groups[*], 'cto') && 'Admin' ||
-            contains(groups[*], 'pm') && 'Admin' ||
-            'Viewer'
-          # Without this a user whose groups match nothing is let in as Viewer
-          # anyway. Left false on purpose: read-only access for an authenticated
-          # colleague is the intended floor, not an error.
-          role_attribute_strict: false
-          use_pkce: true
-
-        auth.github:
-          enabled: true
-          allow_sign_up: true
-          client_id: ${client_id}
-          client_secret: ${client_secret}
-          scopes: user:email read:org
-          auth_url: https://github.com/login/oauth/authorize
-          token_url: https://github.com/login/oauth/access_token
-          api_url: https://github.com/api/user
-          allowed_organizations: Ubuntu-25c-market-prep
+          role_attribute_path: contains(groups[*], 'grafana-admin') && 'Admin' || contains(groups[*], 'grafana-editor') && 'Editor' || 'Viewer'
     alertmanager:
       alertmanagerSpec:
         storage:

@@ -7,6 +7,5 @@ resources:
   - dashboards/monitoring-workstream.yaml
   - alerts/platform-alerts.yaml
   - alerts/monitoring-workstream-alerts.yaml
-  - grafana-github-oauth-sealed.yaml
   - grafana-authentik-sealed.yaml
   - istio/grafana-virtualservice.yaml
