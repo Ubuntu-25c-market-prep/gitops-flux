@@ -18,8 +18,8 @@ spec:
   # PINNED RELEASE NAME. Without this, Flux derives the Helm release name from
   # targetNamespace + name and installs it as `monitoring-opencost`, which
   # renames the Service, the ServiceMonitor and every dashboard URL with it.
-  # That mechanism is why Prometheus's own Service is called
-  # `monitoring-kube-prometheus-stack-prometheus` - see the values below.
+  # That mechanism is why Prometheus's own release is called
+  # `monitoring-kube-prometheus-stack` - see the values below.
   releaseName: opencost
   chart:
     spec:
@@ -53,11 +53,16 @@ spec:
       prometheus:
         internal:
           enabled: true
-          # NOT the chart default `prometheus-server`. This is the real Service
-          # name in this cluster, and it comes from the Flux release-name rule
-          # above. With the default, OpenCost starts healthy, the UI opens, and
-          # every cost is zero - there is no error to find.
-          serviceName: monitoring-kube-prometheus-stack-prometheus
+          # NOT the chart default `prometheus-server`, and NOT
+          # `monitoring-kube-prometheus-stack-prometheus` either. Flux names the
+          # release `monitoring-kube-prometheus-stack`, but the kube-prometheus-stack
+          # chart truncates its fullname to 26 characters, which cuts `-stack` off:
+          #   monitoring-kube-prometheus-stack  ->  monitoring-kube-prometheus
+          # so the Prometheus Service is `monitoring-kube-prometheus-prometheus`
+          # (while subcharts like grafana keep the full prefix). Verified with
+          # `kubectl -n monitoring get svc`. The first install (#181) used the
+          # untruncated name and OpenCost exited with "no such host".
+          serviceName: monitoring-kube-prometheus-prometheus
           namespaceName: monitoring
           port: 9090
       exporter:
