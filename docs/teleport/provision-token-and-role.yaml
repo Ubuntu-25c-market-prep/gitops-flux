@@ -1,0 +1,102 @@
+# gitops-flux/docs/teleport/provision-token-and-role.yaml
+#
+# NOT APPLIED BY FLUX. These are Teleport dynamic resources, not Kubernetes
+# objects. They live in the auth service's own backend and are created with
+# `tctl create`, from inside the auth pod:
+#
+#   kubectl cp docs/teleport/provision-token-and-role.yaml \
+#     teleport/$(kubectl get pod -n teleport -l app.kubernetes.io/component=auth \
+#     -o jsonpath='{.items[0].metadata.name}'):/tmp/res.yaml
+#
+#   kubectl exec -n teleport -it deploy/teleport-auth -- tctl create -f /tmp/res.yaml
+#
+# KNOWN DEBT, STATE IT OUT LOUD RATHER THAN LETTING IT BE DISCOVERED
+#
+# This file is documentation of imperative state. It is in git so the commands
+# are reviewable and repeatable, but git is not the source of truth for them -
+# the SQLite database on the teleport PVC is. `chartMode: standalone` means
+# losing that volume loses these two objects along with every user account, MFA
+# enrolment and session recording, and the agent then cannot rejoin.
+#
+# Two follow-ups, neither blocking this PR:
+#   1. chartMode: aws (DynamoDB + S3) so the backend survives the volume.
+#   2. The Teleport Kubernetes operator, which reconciles these as CRs so they
+#      really are declared in git.
+
+---
+# THE PROVISION TOKEN
+#
+# This is what makes the agent's SealedSecret-free join work. Rather than a
+# shared string, the auth service is told: "trust anything presenting a
+# ServiceAccount token for this exact service account in this cluster."
+#
+# `type: in_cluster` means the auth service validates the ServiceAccount token
+# against its own Kubernetes API. That is only valid because the agent runs in
+# the same cluster as auth - which it does, and which is also why proxyAddr
+# points at the ClusterIP service.
+kind: token
+version: v2
+metadata:
+  name: teleport-app-agent-kube-token
+spec:
+  # Minimal set. `App` only, matching `roles: app` on the agent. Adding Kube
+  # here would let anything holding this identity register a Kubernetes
+  # cluster, which is not what this agent does.
+  roles: [App]
+  join_method: kubernetes
+  kubernetes:
+    type: in_cluster
+    allow:
+      # Format is "namespace:serviceaccountname".
+      #
+      # VERIFY THE SERVICE ACCOUNT NAME AFTER THE FIRST RECONCILE. The chart
+      # derives it from the release name, so it should be teleport-agent, but a
+      # mismatch here is silent on the Teleport side and shows up only as the
+      # agent pod failing to join:
+      #   kubectl get sa -n teleport-agent
+      - service_account: "teleport-agent:teleport-agent"
+
+---
+# THE ROLE
+#
+# Without app_labels a user cannot SEE any application, even one an agent has
+# successfully registered. The tiles simply do not appear and nothing logs an
+# error, which is the single most likely way this whole change looks broken
+# when it is actually working.
+#
+# This is a NEW role rather than an edit to kube-admin, so that app access and
+# cluster access can be granted separately. Not everyone who should reach
+# Grafana needs to exec into pods.
+kind: role
+version: v7
+metadata:
+  name: app-access
+spec:
+  allow:
+    # '*': '*' means every application this cluster knows about. That is
+    # deliberate at three apps and should be narrowed the moment there is an
+    # app not everyone should see - label the apps in the agent values and
+    # match on the label here instead.
+    app_labels:
+      '*': '*'
+  options:
+    # Shorter than the platform default. An application session is a browser
+    # tab; it does not need to outlive a working day.
+    max_session_ttl: 8h
+
+# GRANTING IT
+#
+#   tctl users add <name> --roles=app-access
+#
+# or for someone who already exists:
+#
+#   tctl users update <name> --set-roles=app-access,kube-admin
+#
+# WHAT THIS DOES NOT GIVE YOU
+#
+# Application sessions are NOT recorded. Teleport's session replay covers SSH
+# and Kubernetes sessions - the terminal stream. For applications the audit log
+# records who opened which app and when, at request level, with no replay of
+# what the person saw or clicked. If session recording is the justification
+# being offered for this work, that claim is about `tsh kube` access, not about
+# these three tiles.

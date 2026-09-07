@@ -1,0 +1,17 @@
+# gitops-flux/infrastructures/dev/25c-shared/teleport-agent
+#
+# DELIBERATELY NO `namespace:` LINE, for the reason written out at length in
+# ../argo-cd/kustomization.yaml: it would rewrite the HelmRelease's own
+# metadata.namespace away from flux-system and break valuesFrom lookups later.
+# targetNamespace on the HelmRelease is what places the workload.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../../base/teleport-agent
+patches:
+  - path: patch.yaml
+    target:
+      kind: HelmRelease
+labels:
+  - pairs:
+      kustomize.toolkit.fluxcd.io/prune: enabled
