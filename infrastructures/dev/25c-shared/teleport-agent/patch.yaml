@@ -1,0 +1,59 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: teleport-agent
+  namespace: flux-system
+spec:
+  values:
+    # Must match clusterName on the control plane exactly. The agent presents
+    # this when it joins and the auth service rejects a mismatch, which surfaces
+    # as a join failure rather than as anything that names the cause.
+    #
+    # Cluster-specific, so it lives in the overlay rather than base/ - the same
+    # reason clusterName is patched in ../teleport-cluster/patch.yaml.
+    teleportClusterName: teleport.25c-team1.art
+
+    # The applications this agent proxies.
+    #
+    # In the overlay because these are concrete in-cluster services on THIS
+    # cluster, including Helm release names that a second cluster would not
+    # necessarily reproduce.
+    #
+    # Every URI was verified against the cluster rather than taken from chart
+    # defaults:
+    #   rancher  -> ../rancher/virtualservice.yaml
+    #   grafana  -> ../kube-prometheus-stack/istio/grafana-virtualservice.yaml
+    #   argocd   -> no VirtualService exists; `kubectl get svc -n argocd`
+    #
+    # WHAT THESE APPS STILL DO AFTER TELEPORT PROXIES THEM
+    #
+    # Teleport proxies the app. It does not replace the app's authentication.
+    # All three of these authenticate against authentik (PRs #175-#180), so a
+    # person logs into Teleport, clicks the tile, and authentik asks who they
+    # are. That is two logins, and it is the intended state for now: removing
+    # authentik would move all access control onto hand-made Teleport local
+    # accounts, which Community Edition cannot federate. See ADR 00NN.
+    apps:
+      - name: rancher
+        # Plain HTTP on 80. Rancher's base HelmRelease sets `tls: external`, so
+        # it does not terminate TLS itself - the gateway did. Teleport is now a
+        # second front door to the same plain-HTTP backend.
+        uri: "http://rancher.cattle-system.svc.cluster.local:80"
+
+      - name: grafana
+        uri: "http://monitoring-kube-prometheus-stack-grafana.monitoring.svc.cluster.local:80"
+
+      - name: argocd
+        # Plain HTTP on 80. The service publishes both 80 and 443; 80 is the
+        # deliberate choice, matching rancher and grafana above - TLS terminates
+        # at the front door and the in-cluster hop is plain. Taking 443 would
+        # have meant insecure_skip_verify for Argo CD's self-signed certificate,
+        # which is a worse trade for no gain.
+        #
+        # Service name is argocd-argo-cd-server, not argocd-server: the chart
+        # prefixes with the release name. Verified with `kubectl get svc -n argocd`.
+        #
+        # The argocd namespace is unmeshed (deliberately - the control plane is
+        # platform, not a business workload). When gitops-flux#8's default-deny
+        # AuthorizationPolicies land, this hop needs an explicit allow rule.
+        uri: "http://argocd-argo-cd-server.argocd.svc.cluster.local:80"

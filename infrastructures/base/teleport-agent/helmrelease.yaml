@@ -1,0 +1,115 @@
+# gitops-flux/infrastructures/base/teleport-agent/helmrelease.yaml
+#
+# A Teleport AGENT, which is a different thing from the control plane in
+# base/teleport-cluster. The control plane holds identities, roles, the audit
+# log and the recordings. An agent registers RESOURCES with that control plane
+# and proxies traffic to them.
+#
+# WHY A SEPARATE RELEASE RATHER THAN `apps:` ON teleport-cluster
+#
+# The teleport-cluster chart accepts an `apps:` list directly, so this could
+# have been four lines on the existing HelmRelease. It is separate because the
+# control plane owns the user database on a single PVC, and adding an app
+# should not be a change to the release that holds it. A malformed URI here
+# crashloops an agent; the same mistake on teleport-cluster takes down logins.
+#
+# ROLES: `app` ONLY - DO NOT ADD `kube`
+#
+# base/teleport-cluster/helmrelease.yaml sets `kubeClusterName: u25c-shared`,
+# which makes the control plane serve the cluster it runs in. Adding `kube`
+# here would register u25c-shared a second time under a different agent, and
+# `tsh kube ls` would show two entries for one cluster.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: teleport-agent
+  namespace: flux-system
+spec:
+  interval: 20h0m0s
+  releaseName: teleport-agent
+  targetNamespace: teleport-agent
+  install:
+    # Namespace comes from 000-cluster-wide-resources, same as every other
+    # component here, so one controller owns the object.
+    createNamespace: false
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      retries: 3
+      strategy: rollback
+  # The agent cannot join until the auth service is up and the provision token
+  # exists. Without this the first install fails, retries three times and gives
+  # up before Teleport is ready on a cold cluster.
+  dependsOn:
+    - name: teleport
+      namespace: flux-system
+  chart:
+    spec:
+      chart: teleport-kube-agent
+      # Held equal to the control plane's chart version deliberately. Teleport
+      # supports agents up to one major behind the auth service and never
+      # ahead - pinning them together removes the question. Bump both in one PR
+      # or neither.
+      version: "18.8.3"
+      sourceRef:
+        kind: HelmRepository
+        name: teleport
+        namespace: flux-system
+  values:
+    # Community Edition. The chart defaults this to false, but the upstream
+    # docs and most copy-paste examples set it to true, and a true here pulls
+    # an image the licence does not cover. Stated explicitly so nobody
+    # "restores" it from a tutorial.
+    enterprise: false
+
+    # Only the application service. See the ROLES note at the top of this file.
+    roles: app
+
+    # NO STATIC JOIN TOKEN.
+    #
+    # An agent has to prove its identity to the auth service before it is
+    # issued certificates. The usual way is `authToken`, a shared string that
+    # then has to live in a SealedSecret and be rotated.
+    #
+    # This agent runs in the SAME cluster as the auth service, so it can prove
+    # itself with its own Kubernetes ServiceAccount token instead. The chart
+    # mounts that token via a projected volume automatically. No secret is
+    # created, stored, sealed or rotated, and there is nothing in this repo
+    # that would be dangerous if the repo were public - which it is.
+    #
+    # The matching side is a provision token in Teleport that names this
+    # service account. It is NOT a Kubernetes object and is not in this
+    # directory. See docs/teleport/provision-token-and-role.yaml.
+    joinParams:
+      method: "kubernetes"
+      tokenName: "teleport-app-agent-kube-token"
+
+    # In-cluster address, NOT teleport.25c-team1.art.
+    #
+    # This matters more than it looks. The public hostname currently returns
+    # 503 - the shared gateway terminates TLS and so does Teleport, so the
+    # gateway hands plaintext to a TLS listener (see the PASSTHROUGH discussion
+    # on the istio workstream). Pointing the agent at the ClusterIP service
+    # keeps it entirely off that path, so the agent joins and apps register
+    # while the public route is still broken.
+    #
+    # It is also the correct long-term setting regardless: agent-to-proxy
+    # traffic has no reason to leave the cluster, hit the NLB and come back.
+    proxyAddr: "teleport.teleport.svc.cluster.local:443"
+
+    # The chart's automatic-update mechanism pulls from Teleport's release
+    # channel and would move the agent out from under the pinned chart version.
+    # Version changes belong in git, like every other component here.
+    updater:
+      enabled: false
+
+    # Two t3.medium nodes carry the whole platform. An agent with no requests
+    # competes with istiod and Prometheus for headroom. This process proxies
+    # HTTP; it does not need much.
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        memory: 512Mi
