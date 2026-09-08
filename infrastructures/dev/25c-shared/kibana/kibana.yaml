@@ -35,8 +35,32 @@ spec:
           resources:
             requests:
               cpu: 500m
-              # 1Gi is ECK's documented floor for Kibana. It is a Node.js
-              # application and starts failing health checks below this.
+              # Request stays 1Gi: that is roughly what Kibana holds at rest
+              # (measured 907Mi), and it fits the platform pool's existing
+              # nodes, so this needs no new machine.
               memory: 1Gi
             limits:
-              memory: 1Gi
+              # Limit raised 1Gi -> 2Gi. 1Gi was ECK's documented *floor* -
+              # enough to start, not enough to serve. Kibana sat at 907Mi of
+              # a 1024Mi ceiling and was killed by the Node runtime the moment
+              # a query allocated anything:
+              #
+              #   FATAL ERROR: Ineffective mark-compacts near heap limit
+              #   Allocation failed - JavaScript heap out of memory
+              #
+              # Twelve restarts, exit code 134 (SIGABRT). Discover returned
+              # "no results" because the backend died mid-search, while
+              # Elasticsearch answered the identical query with 10,000 hits
+              # and zero shard failures.
+              #
+              # ECK leaves NODE_OPTIONS empty, so Node sizes its heap from the
+              # container's cgroup limit - raising the limit raises the heap,
+              # which is the actual fix rather than just a higher ceiling.
+              #
+              # Consequence to know: request != limit makes this Burstable
+              # rather than Guaranteed QoS, so under node memory pressure it
+              # is evicted before a Guaranteed pod. Acceptable here - Kibana
+              # is stateless, carries system-cluster-critical, and the
+              # alternative (request 2Gi) does not fit any current platform
+              # node and would buy a larger instance for a dev log viewer.
+              memory: 2Gi
