@@ -56,7 +56,14 @@ spec:
     # application access, which is most of why Teleport is installed.
     service:
       type: LoadBalancer
-      annotations:
+
+    # NOT service.annotations. The chart's top-level `service` block accepts
+    # only `type` and `spec`; anything else there is silently dropped, which is
+    # exactly what happened on the first attempt - the NLB came up with no
+    # annotations at all and external-dns had no hostname to act on. Confirmed
+    # against `helm show values`.
+    annotations:
+      service:
         # NLB, not the default classic ELB. Same annotation and same reasoning
         # as the shared gateway's service - no AWS Load Balancer Controller on
         # this cluster, and the in-tree provider recognises it directly.
