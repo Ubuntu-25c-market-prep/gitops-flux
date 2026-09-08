@@ -11,27 +11,96 @@ spec:
     # auth service starts. Editing it on a running deployment does not rename
     # anything - the CA on the PVC still carries the old name.
     #
-    # This install ran as u25c-shared-dev.teleport.local from gitops-flux#99
-    # until 26 August. Moving to the real hostname therefore required deleting
-    # the PVC and letting the auth service initialise fresh, which discards the
-    # local user database, MFA enrolments and every session recording.
-    # Acceptable here - one evaluation user, eight days old. It would not be
-    # once anyone else depends on this, which is the reason to fix the name now.
+    # This was set here on 26 August and DID NOT TAKE, because the PVC was
+    # never actually deleted. `tctl status` reported
+    # u25c-shared-dev.teleport.local for a further twelve days while this file
+    # claimed otherwise, and the mismatch broke the Kubernetes join method: the
+    # agent's ServiceAccount token carried the configured name while the auth
+    # service validated against the real one. Fixed 7 September by deleting the
+    # PVC for real; `tctl status` now agrees with this line.
+    #
+    # Nothing checks that config matches the CA. If this is edited again,
+    # verify with `tctl status` rather than assuming.
     clusterName: teleport.25c-team1.art
 
-    # Behind the shared Istio gateway, which terminates TLS with the wildcard
-    # certificate for *.25c-team1.art (gitops-flux#135).
+    # ---------------------------------------------------------------------
+    # EXPOSURE: Teleport's own NLB, not the shared Istio gateway
+    # ---------------------------------------------------------------------
     #
-    # useExisting tells the chart to configure Teleport as if it sits behind an
-    # ingress - serving plain HTTP, not terminating TLS - without creating an
-    # Ingress resource. A VirtualService routes to it instead, which is how
-    # every other hostname on this cluster reaches its backend.
+    # This replaces `ingress.enabled/useExisting` plus a VirtualService, which
+    # never worked and could not have. The reasoning is worth writing down
+    # because it looks like an ordinary L7 route and is not.
     #
-    # service.type stays ClusterIP from base, so no second load balancer.
-    ingress:
-      enabled: true
-      useExisting: true
-      # The chart otherwise adds *.teleport.25c-team1.art as a served hostname
-      # for Application Access, which we do not use. The wildcard certificate is
-      # one label deep and would not cover it anyway.
-      suppressAutomaticWildcards: true
+    # The chart requires proxyListenerMode: multiplex when ingress is enabled,
+    # so Teleport terminates TLS itself. The shared Gateway also terminates TLS
+    # (mode: SIMPLE). Plaintext arrives at a TLS listener and the hostname
+    # returns 503.
+    #
+    # PASSTHROUGH on the shared Gateway would fix the handshake, but not the
+    # rest. Teleport's proxy is not an HTTP server: it multiplexes the web UI,
+    # SSH, the Kubernetes API and agent reverse tunnels over one port using
+    # ALPN. An L7 ingress in front of that leaves `tsh` in the degraded mode
+    # Teleport documents, and the reverse tunnel does not work at all.
+    #
+    # That last point is what actually blocked application access. The app
+    # service - whether run from teleport-kube-agent or inside the auth pod -
+    # registers by dialling the proxy's ADVERTISED PUBLIC ADDRESS over a
+    # reverse tunnel. That address is teleport.25c-team1.art. While that name
+    # 503s, no application can register from anywhere. Verified on 7 September
+    # from both an agent (tunnel dial EOF) and from auth.teleportConfig, which
+    # refuses to start at all: "failed to find reverse tunnel address".
+    #
+    # COST: one additional NLB, roughly $17/month. Named here rather than
+    # buried, because the FinOps ceiling is already a live concern. The
+    # alternative is free and does not deliver working CLI access or
+    # application access, which is most of why Teleport is installed.
+    service:
+      type: LoadBalancer
+      annotations:
+        # NLB, not the default classic ELB. Same annotation and same reasoning
+        # as the shared gateway's service - no AWS Load Balancer Controller on
+        # this cluster, and the in-tree provider recognises it directly.
+        service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+
+        # DNS. external-dns runs with sources `service` and `ingress`, so the
+        # name has to be declared on the Service that owns the address.
+        #
+        # BOTH names are required. The apex is the proxy itself; the wildcard
+        # is application access, which publishes each app on its own subdomain
+        # (rancher.teleport.25c-team1.art). A wildcard is exactly one label
+        # deep, so *.25c-team1.art does NOT cover it - the same trap already
+        # documented in base/cert-manager/certificate-wildcard.yaml.
+        #
+        # teleport.25c-team1.art is REMOVED from the shared gateway's
+        # annotation in the same commit. Two Services claiming one record makes
+        # external-dns flap between them.
+        external-dns.alpha.kubernetes.io/hostname: teleport.25c-team1.art,*.teleport.25c-team1.art
+
+    # ---------------------------------------------------------------------
+    # CERTIFICATE
+    # ---------------------------------------------------------------------
+    #
+    # The chart creates and owns its own Certificate, rather than a hand-written
+    # one in this directory, because the proxy has to be restarted when the
+    # Secret changes and the chart already wires that up.
+    #
+    # Reuses the letsencrypt-prod ClusterIssuer that cert-manager already runs
+    # with the Route 53 DNS-01 solver (gitops-flux#146). DNS-01 matters here:
+    # HTTP-01 would need the name to resolve and serve before the certificate
+    # exists, which is the chicken-and-egg that made `acme: true` unattractive.
+    #
+    # This is what finally removes the self-signed certificate. Every TLS
+    # failure on 7 September traces back to it - the agent could not verify a
+    # certificate naming teleport.25c-team1.art when dialling an in-cluster
+    # address, and the browser cannot either.
+    highAvailability:
+      certManager:
+        enabled: true
+        issuerKind: ClusterIssuer
+        issuerName: letsencrypt-prod
+        # The wildcard is added AUTOMATICALLY by the chart (which is what the
+        # old suppressAutomaticWildcards was suppressing). Nothing to set.
+        addCommonName: false
+
+    # acme: false stays inherited from base. cert-manager above does the
+    # issuance; enabling both would have two things racing for the same names.

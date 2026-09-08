@@ -85,18 +85,20 @@ spec:
       method: "kubernetes"
       tokenName: "teleport-app-agent-kube-token"
 
-    # In-cluster address, NOT teleport.25c-team1.art.
+    # The proxy's public address, which is also what the proxy ADVERTISES as
+    # its reverse tunnel address. That is not a detail: the application service
+    # registers by dialling that advertised address, so this value and the
+    # proxy's own exposure have to agree or nothing registers.
     #
-    # This matters more than it looks. The public hostname currently returns
-    # 503 - the shared gateway terminates TLS and so does Teleport, so the
-    # gateway hands plaintext to a TLS listener (see the PASSTHROUGH discussion
-    # on the istio workstream). Pointing the agent at the ClusterIP service
-    # keeps it entirely off that path, so the agent joins and apps register
-    # while the public route is still broken.
+    # This was teleport.teleport.svc.cluster.local:443 while the public name
+    # 503'd. That let the agent JOIN but not tunnel, because the tunnel target
+    # comes from the proxy's advertisement rather than from this setting. The
+    # failure was a bare dial EOF with nothing naming the cause.
     #
-    # It is also the correct long-term setting regardless: agent-to-proxy
-    # traffic has no reason to leave the cluster, hit the NLB and come back.
-    proxyAddr: "teleport.teleport.svc.cluster.local:443"
+    # Now that the proxy has its own NLB and a cert-manager certificate for
+    # this exact name, the public address both resolves and verifies - which is
+    # also why no insecureSkipProxyTLSVerify is needed here. Do not add one.
+    proxyAddr: "teleport.25c-team1.art:443"
 
     # The chart's automatic-update mechanism pulls from Teleport's release
     # channel and would move the agent out from under the pinned chart version.

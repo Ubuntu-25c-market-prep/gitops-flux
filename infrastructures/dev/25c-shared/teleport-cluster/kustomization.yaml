@@ -2,7 +2,10 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - ../../../base/teleport-cluster
-  - virtualservice.yaml
+  # virtualservice.yaml DELETED in this commit. Teleport no longer sits behind
+  # the shared Istio gateway - it has its own NLB, for the reasons written out
+  # in patch.yaml. A VirtualService for a hostname the gateway no longer serves
+  # routes nothing and would mislead the next person reading this directory.
 patches:
   - path: patch.yaml
     target:
