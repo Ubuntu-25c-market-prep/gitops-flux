@@ -8,4 +8,3 @@ resources:
   - alerts/platform-alerts.yaml
   - alerts/monitoring-workstream-alerts.yaml
   - grafana-authentik-sealed.yaml
-  - istio/grafana-virtualservice.yaml
