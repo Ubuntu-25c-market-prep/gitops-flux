@@ -79,6 +79,19 @@ spec:
     # the overlay.
     service:
       name: kube-dns
+      # Select on k8s-app ALONE. The chart otherwise adds app.kubernetes.io/name
+      # and app.kubernetes.io/instance to the Service selector - labels EKS's
+      # pods do not carry. Helm applies the Service BEFORE the Deployment, so
+      # those extra labels land while the old pods are still running, the
+      # selector matches nothing, EndpointSlices empty, and every lookup gets
+      # "connection refused" with no error anywhere mentioning DNS.
+      #
+      # This bites even on a successful adoption: the Service is patched
+      # immediately while pods only gain the labels as the Deployment rolls.
+      # k8s-app: kube-dns is carried by EKS's pods and the chart's alike, so the
+      # Service keeps matching throughout.
+      selector:
+        k8s-app: kube-dns
 
     # The chart otherwise renders serviceAccountName: default.
     serviceAccount:
