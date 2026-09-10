@@ -1,0 +1,22 @@
+# gitops-flux/infrastructures/dev/dev-eks-us-east-1/kube-proxy
+#
+# Adopts the kube-proxy EKS installed. Plain manifests, applied by
+# kustomize-controller straight to the API server - no chart to fetch, so none
+# of the helm-controller DNS dependency that made coredns difficult applies.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../../base/kube-proxy
+patches:
+  - path: patch.yaml
+    target:
+      kind: DaemonSet
+  # Separate entry: the patch above targets DaemonSet only, so a ConfigMap
+  # patch listed there would silently never apply.
+  - path: patch-configmap.yaml
+    target:
+      kind: ConfigMap
+      name: kube-proxy
+labels:
+  - pairs:
+      kustomize.toolkit.fluxcd.io/prune: enabled
