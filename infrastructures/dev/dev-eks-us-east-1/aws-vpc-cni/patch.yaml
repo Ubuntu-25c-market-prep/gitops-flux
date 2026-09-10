@@ -1,0 +1,36 @@
+# Cluster-specific half of the CNI. base/aws-vpc-cni holds the rest.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: aws-vpc-cni
+  namespace: flux-system
+spec:
+  chart:
+    spec:
+      # base pins 1.22.3, which is what 25c-shared runs. This cluster shipped
+      # with 1.22.4 and the pins exist to make adoption a no-op, so they have to
+      # follow the cluster, not the library. Bumping base instead would roll the
+      # CNI on a live cluster for no reason.
+      version: "1.22.4"
+  values:
+    image:
+      tag: v1.22.4-eksbuild.3
+    init:
+      image:
+        tag: v1.22.4-eksbuild.3
+    nodeAgent:
+      image:
+        tag: v1.4.0-eksbuild.1
+    env:
+      # Cluster-specific env EKS injected that the chart does not render.
+      # Without these, adopting the DaemonSet DELETES them: the CNI loses
+      # subnet discovery (VPC_ID) and its own identity (CLUSTER_NAME).
+      #
+      # None carries the AWS account id, so they are safe in a public repo.
+      #
+      # No CLUSTER_ENDPOINT here, unlike 25c-shared's overlay: EKS did not set
+      # it on this cluster, and adding it would be a change rather than a
+      # carry-over.
+      CLUSTER_NAME: dev-eks-us-east-1
+      VPC_ID: vpc-0849e0f6efc203ff5
+      ANNOTATE_POD_IP: "false"
