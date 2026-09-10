@@ -1,0 +1,11 @@
+# Upstream CoreDNS chart, used by clusters that install CoreDNS rather than
+# inherit EKS's. Sources are inert until a HelmRelease names them, so this
+# costs nothing on clusters that run base/coredns/ instead.
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: coredns
+  namespace: flux-system
+spec:
+  interval: 24h
+  url: https://coredns.github.io/helm
