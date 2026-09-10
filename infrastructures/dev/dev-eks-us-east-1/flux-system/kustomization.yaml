@@ -1,0 +1,6 @@
+# gitops-flux/infrastructures/dev/dev-eks-us-east-1/flux-system
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: flux-system
+resources:
+  - ../../../base/000-helm-repository
