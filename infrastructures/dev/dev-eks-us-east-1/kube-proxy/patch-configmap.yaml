@@ -1,0 +1,38 @@
+# kube-proxy's kubeconfig, pointed at THIS cluster's API server.
+#
+# base/kube-proxy/configmap-kube-proxy.yaml carries 25c-shared's endpoint
+# (5af0d8fa...), captured when that cluster's kube-proxy was moved into Flux.
+# It is cluster identity sitting in a shared library - the same leak
+# base/karpenter and base/opencost have - and it is not survivable here:
+# kube-proxy pointed at another cluster's API server fails authentication,
+# stops programming iptables, and every Service on this cluster goes dark,
+# DNS included.
+#
+# Patched rather than fixed in base because 25c-shared still reads that file.
+# When it is decommissioned this belongs back in base as an overlay-supplied
+# value, not a hardcoded one.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kube-proxy
+  namespace: kube-system
+data:
+  kubeconfig: |-
+    kind: Config
+    apiVersion: v1
+    clusters:
+    - cluster:
+        certificate-authority: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        server: https://ca6b52fc8ee02ff57009e02f583036a5.gr7.us-east-1.eks.amazonaws.com
+      name: default
+    contexts:
+    - context:
+        cluster: default
+        namespace: default
+        user: default
+      name: default
+    current-context: default
+    users:
+    - name: default
+      user:
+        tokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token

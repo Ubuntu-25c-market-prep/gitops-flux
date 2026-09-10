@@ -1,0 +1,22 @@
+# Pinned to what this cluster is already running, so adopting kube-proxy does
+# not also change it. base/ pins eksbuild.17 (25c-shared's version); this
+# cluster shipped with .18 and downgrading a CNI-adjacent component for the
+# sake of matching a library is not a trade worth making.
+#
+# The cpu request likewise matches the live DaemonSet. base/ sets no resources
+# at all, so without this the request would be removed and every kube-proxy pod
+# would restart for no reason.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: kube-proxy
+  namespace: kube-system
+spec:
+  template:
+    spec:
+      containers:
+        - name: kube-proxy
+          image: 602401143452.dkr.ecr.us-east-1.amazonaws.com/eks/kube-proxy:v1.34.6-eksbuild.18
+          resources:
+            requests:
+              cpu: 100m
