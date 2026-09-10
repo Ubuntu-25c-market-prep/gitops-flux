@@ -1,0 +1,115 @@
+# gitops-flux/infrastructures/base/coredns-helm/helmrelease.yaml
+#
+# CoreDNS from the upstream chart. This REPLACES the CoreDNS that EKS installs
+# at cluster creation rather than adopting it - the objects EKS leaves behind
+# carry no meta.helm.sh ownership annotations, and every value below would
+# otherwise exist only to reproduce what was already running.
+#
+# Replacing costs a brief DNS outage, which is why it is done while a cluster is
+# still empty and never afterwards.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: coredns
+  namespace: flux-system
+spec:
+  chart:
+    spec:
+      chart: coredns
+      version: "1.47.1"
+      sourceRef:
+        kind: HelmRepository
+        name: coredns
+        namespace: flux-system
+  interval: 20h0m0s
+  targetNamespace: kube-system
+  releaseName: coredns
+  storageNamespace: kube-system
+  values:
+    # EKS's build from the regional ECR, not the chart's Docker Hub default.
+    # The chart's appVersion is 1.14.6 where EKS ships 1.12.4, so taking the
+    # default would silently move CoreDNS two minor versions on install.
+    image:
+      repository: 602401143452.dkr.ecr.us-east-1.amazonaws.com/eks/coredns
+      tag: v1.12.4-eksbuild.18
+
+    # The chart labels pods k8s-app: coredns. kube-dns is what the ecosystem
+    # selects on - kube-prometheus-stack's CoreDNS ServiceMonitor among others.
+    k8sAppLabelOverride: kube-dns
+
+    deployment:
+      name: coredns
+
+    # The Service EKS's kubelets already point at. The name is neutral - every
+    # EKS cluster calls it kube-dns - but its clusterIP is not, so that lives in
+    # the overlay.
+    service:
+      name: kube-dns
+
+    # The chart otherwise renders serviceAccountName: default.
+    serviceAccount:
+      create: true
+      name: coredns
+
+    # Sizing as EKS shipped it, so replacing CoreDNS is not also resizing it.
+    #
+    # `cpu: null` removes the chart's own 100m CPU limit and MUST live here
+    # rather than in an overlay patch: kustomize reads null in a patch as
+    # "delete this key", strips it, and Helm then re-applies its default - the
+    # limit silently comes back. In a base resource it is an ordinary value and
+    # reaches Helm intact.
+    #
+    # No CPU limit is the right default for every cluster, not just this one: a
+    # throttled CoreDNS presents as intermittent resolution latency
+    # cluster-wide. Memory is a real ceiling and stays. An overlay is free to
+    # override either number - only removing a key is what breaks.
+    resources:
+      limits:
+        cpu: null
+        memory: 170Mi
+      requests:
+        cpu: 100m
+        memory: 70Mi
+
+    priorityClassName: system-cluster-critical
+
+    podDisruptionBudget:
+      maxUnavailable: 1
+
+    tolerations:
+      - key: CriticalAddonsOnly
+        operator: Exists
+      - key: node-role.kubernetes.io/control-plane
+        effect: NoSchedule
+
+    # Corefile, pinned to EKS's rather than the chart's, which differ in three
+    # places: lameduck 10s, an added `ttl 30` on the kubernetes plugin, and
+    # prometheus bound to 0.0.0.0:9153.
+    #
+    # use_tcp: true is what generates the TCP 53 Service port. Without it DNS
+    # still answers small queries and fails for responses over 512 bytes.
+    servers:
+      - zones:
+          - zone: .
+            use_tcp: true
+        port: 53
+        plugins:
+          - name: errors
+          - name: health
+            configBlock: |-
+              lameduck 5s
+          - name: ready
+          - name: kubernetes
+            parameters: cluster.local in-addr.arpa ip6.arpa
+            configBlock: |-
+              pods insecure
+              fallthrough in-addr.arpa ip6.arpa
+          - name: prometheus
+            parameters: :9153
+          - name: forward
+            parameters: . /etc/resolv.conf
+          - name: cache
+            parameters: "30"
+          - name: loop
+          - name: reload
+          - name: loadbalance

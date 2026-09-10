@@ -23,3 +23,4 @@ resources:
   - fluent.yaml
   - authentik.yaml
   - opencost.yaml
+  - coredns.yaml

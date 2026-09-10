@@ -1,0 +1,32 @@
+# Everything here is true of this cluster and no other, which is why it is not
+# in base/coredns-helm.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: coredns
+  namespace: flux-system
+spec:
+  values:
+    # LOAD-BEARING. Every kubelet on this cluster is started with --cluster-dns
+    # pointing at this address, so the Service has to come back on exactly it.
+    # A different clusterIP takes DNS away from every pod and does not
+    # self-heal. Derived from the cluster's service_ipv4_cidr (172.20.0.0/16 in
+    # terraform-infra-v2 resources/us-east-1/dev/eks/config.yaml), which a
+    # second cluster is free to set differently.
+    service:
+      clusterIP: 172.20.0.10
+
+    # Two replicas across the two nodes. Sizing itself is in base - see the
+    # note there on why the CPU limit cannot be removed from a patch.
+    replicaCount: 2
+
+    # Two nodes across us-east-1a and us-east-1b. ScheduleAnyway, not
+    # DoNotSchedule: with replicas equal to zones, a hard constraint would make
+    # DNS unschedulable the moment one AZ has no capacity.
+    topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: topology.kubernetes.io/zone
+        whenUnsatisfiable: ScheduleAnyway
+        labelSelector:
+          matchLabels:
+            k8s-app: kube-dns
