@@ -1,12 +1,28 @@
 # gitops-flux/infrastructures/base/coredns-helm/helmrelease.yaml
 #
-# CoreDNS from the upstream chart. This REPLACES the CoreDNS that EKS installs
-# at cluster creation rather than adopting it - the objects EKS leaves behind
-# carry no meta.helm.sh ownership annotations, and every value below would
-# otherwise exist only to reproduce what was already running.
+# CoreDNS from the upstream chart, ADOPTING the Deployment EKS creates at
+# cluster bootstrap rather than replacing it.
 #
-# Replacing costs a brief DNS outage, which is why it is done while a cluster is
-# still empty and never afterwards.
+# Adoption is not a preference here, it is the only order that works.
+# helm-controller fetches charts over HTTP from
+# source-controller.flux-system.svc.cluster.local - a DNS name. Delete CoreDNS
+# and helm-controller can no longer resolve source-controller, so it cannot
+# install the CoreDNS that would restore DNS. Verified the hard way:
+#
+#   Get "http://source-controller.flux-system.svc.cluster.local./helmchart/
+#   flux-system/flux-system-coredns/coredns-1.47.1.tgz": lookup ... on
+#   172.20.0.10:53: i/o timeout
+#
+# Upgrades stay safe: they roll pods one at a time and DNS never drops to zero.
+# Only a total outage is unrecoverable by Flux alone.
+#
+# BREAK GLASS - if every CoreDNS pod is gone, Flux cannot fix it. Restore EKS's
+# manifests by hand, then let Flux reconcile:
+#
+#   kubectl apply -k infrastructures/base/coredns
+#
+# The same reasoning applies with more force to aws-vpc-cni: deleting the CNI
+# takes pod networking away entirely. Adopt, never replace.
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -37,8 +53,26 @@ spec:
     # selects on - kube-prometheus-stack's CoreDNS ServiceMonitor among others.
     k8sAppLabelOverride: kube-dns
 
+    # These two reproduce the selector EKS puts on the Deployment it creates.
+    # spec.selector is immutable, so adoption fails outright without an exact
+    # match: Helm patches matchLabels as a map, the two label sets merge, and
+    # the API server rejects the union -
+    #
+    #   spec.selector: Invalid value: {"app.kubernetes.io/instance":"coredns",
+    #   "app.kubernetes.io/name":"coredns","eks.amazonaws.com/component":
+    #   "coredns","k8s-app":"kube-dns"}: field is immutable
+    #
+    # customLabels puts eks.amazonaws.com/component on the pod template as well,
+    # so the template still matches the selector. Both live in base rather than
+    # an overlay: every EKS cluster's CoreDNS carries the same labels.
+    customLabels:
+      eks.amazonaws.com/component: coredns
+
     deployment:
       name: coredns
+      selector:
+        eks.amazonaws.com/component: coredns
+        k8s-app: kube-dns
 
     # The Service EKS's kubelets already point at. The name is neutral - every
     # EKS cluster calls it kube-dns - but its clusterIP is not, so that lives in
