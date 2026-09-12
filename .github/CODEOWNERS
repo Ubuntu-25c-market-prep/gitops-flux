@@ -66,12 +66,31 @@
 /infrastructures/dev/25c-shared/kibana/                      @Ubuntu-25c-market-prep/logging
 
 # Mesh - istio.
+#
+# istio-cni had no rule here until this cluster's addition surfaced it: same
+# gap #106 already fixed for cert-manager, just never noticed for this one
+# directory since it never generated a PR of its own until now.
 /infrastructures/base/istio-base/                            @Ubuntu-25c-market-prep/istio
 /infrastructures/base/istiod/                                @Ubuntu-25c-market-prep/istio
+/infrastructures/base/istio-cni/                              @Ubuntu-25c-market-prep/istio
 /infrastructures/base/istio-gateway/                         @Ubuntu-25c-market-prep/istio
 /infrastructures/dev/25c-shared/istio-base/                  @Ubuntu-25c-market-prep/istio
 /infrastructures/dev/25c-shared/istiod/                      @Ubuntu-25c-market-prep/istio
 /infrastructures/dev/25c-shared/istio-gateway/               @Ubuntu-25c-market-prep/istio
+
+# Mesh - istio, dev-eks-us-east-1. Gateway API instead of the classic
+# Gateway/VirtualService API used on 25c-shared - no istio-gateway chart on
+# this cluster, see infrastructures/dev/dev-eks-us-east-1/istiod/patch.yaml.
+#
+# The Gateway object itself lives under /clusters/, not /infrastructures/ -
+# same CRD-ordering reason as karpenter-nodepool and kyverno-policies (see
+# those files' comments). /clusters/ is @flux above; this line narrows just
+# that one subdirectory back to @istio, since it's mesh ingress config, not a
+# Flux delivery object, even though it has to live on that side of the tree.
+/infrastructures/dev/dev-eks-us-east-1/istio-base/            @Ubuntu-25c-market-prep/istio
+/infrastructures/dev/dev-eks-us-east-1/istiod/                @Ubuntu-25c-market-prep/istio
+/infrastructures/dev/dev-eks-us-east-1/istio-cni/             @Ubuntu-25c-market-prep/istio
+/clusters/dev/dev-eks-us-east-1/istio-ingress/                @Ubuntu-25c-market-prep/istio
 
 # Security - kyverno, policy-reporter.
 /infrastructures/base/kyverno/                               @Ubuntu-25c-market-prep/security
