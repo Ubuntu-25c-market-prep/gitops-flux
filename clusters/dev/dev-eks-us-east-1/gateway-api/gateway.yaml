@@ -52,14 +52,23 @@ spec:
       # honours these annotations directly, no addon needed. Same
       # mechanism 25c-shared's istio-gateway Service patch uses.
       service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
-      # Internal-only for now: no DNS record and no public TLS exist yet
-      # (cert-manager/external-dns land later, additively - see the PR
-      # description). This VPC's private subnets carry
-      # kubernetes.io/role/internal-elb=1
-      # (terraform-infra-v2/resources/us-east-1/dev/network/config.yaml),
-      # so an internal NLB places correctly into them. Dropping this one
-      # annotation is how this goes public later - no other change needed.
-      service.beta.kubernetes.io/aws-load-balancer-internal: "true"
+      # PUBLIC on purpose, decided before any DNS record exists: an AWS
+      # NLB's internal/public-ness isn't a flag you flip on a live
+      # balancer, it's a different balancer with a different address, so
+      # this is the cheap moment to choose - before external-dns ever
+      # publishes this address anywhere. Matches where this is headed:
+      # Grafana, Rancher, Kiali and friends need real user access, same as
+      # 25c-shared's already-public gateway.
+      #
+      # SAFE right now specifically because there are zero HTTPRoutes: the
+      # only listener is plain HTTP/80 with no TLS (no cert-manager on this
+      # cluster yet), so being public today just means the internet gets
+      # Envoy's 404 instead of a VPC-only 404 - nothing to intercept.
+      # That stops being true the moment a real HTTPRoute attaches a real
+      # backend: DO NOT route anything through this Gateway until an HTTPS
+      # listener with a real certificate exists (see the follow-up PR that
+      # adds cert-manager). Enforce that as a review rule on every
+      # HTTPRoute PR, not as a property of this file.
     labels:
       u25c.io/workstream: istio
 
