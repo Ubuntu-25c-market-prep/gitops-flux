@@ -1,0 +1,73 @@
+---
+# gitops-flux/clusters/dev/dev-eks-us-east-1/gateway-api-crds.yaml
+#
+# Istio does NOT bundle the Kubernetes Gateway API CRDs - istio/base 1.30.3
+# ships only networking.istio.io CRDs (confirmed via `helm show values base
+# --version 1.30.3`: enableIstioConfigCRDs/excludedCRDs/enableCRDTemplates
+# cover that chart's own CRDs only, nothing Gateway API). istiod reads the
+# gateway.networking.k8s.io/bundle-version annotation on these CRDs and
+# silently declines to reconcile Gateway API objects if it's below its
+# minimum - no error on the Gateway, just permanent absence of status.
+#
+# v1.5.1, STANDARD channel. Verified against istio/istio@1.30.3's go.mod
+# (sigs.k8s.io/gateway-api v1.5.1), not estimated. Standard channel covers
+# GatewayClass/Gateway/HTTPRoute/GRPCRoute/ReferenceGrant - everything this
+# repo uses. Experimental only adds TCPRoute/TLSRoute/UDPRoute and alpha
+# policy kinds, which Istio gates behind PILOT_ENABLE_ALPHA_GATEWAY_API and
+# which nothing here needs.
+#
+# A SECOND source, not a second path in this repo: vendoring the generated
+# CRD YAML here would make every upgrade an unreviewable diff and cut the
+# provenance link. Upstream publishes no official OCI artifact or Helm
+# chart for these CRDs, so a pinned GitRepository is the closest match to
+# how every other third-party artifact in this repo is pulled (18
+# HelmRepository sources, zero vendored charts).
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: gateway-api
+  namespace: flux-system
+spec:
+  interval: 24h0m0s
+  url: https://github.com/kubernetes-sigs/gateway-api
+  ref:
+    # PIN. Bump this line and nothing else to upgrade. Must stay >= the
+    # version in istio/istio's go.mod for the running Istio minor.
+    tag: v1.5.1
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: gateway-api-crds
+  namespace: flux-system
+spec:
+  interval: 20h0m0s
+  retryInterval: 5m0s
+  # Upstream's own kustomize overlay for the standard channel - see the
+  # channel note above.
+  path: ./config/crd/standard
+  # prune: true here has a bigger blast radius than most Kustomizations in
+  # this repo: deleting this object (or this file) deletes the CRDs, which
+  # cascade-deletes every Gateway/HTTPRoute/GRPCRoute/ReferenceGrant in the
+  # cluster, not just the objects this Kustomization itself created. Kept
+  # true anyway for consistency with every other Kustomization here - noted
+  # explicitly so a future removal is a deliberate decision, not a surprise.
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: gateway-api
+  # No dependsOn: CRDs depend on nothing. istiod does NOT need these to
+  # exist at startup either - it runs a CRD watcher that starts/stops the
+  # Gateway API controllers dynamically as the CRDs appear/disappear (this
+  # team's own history proves it: removing them on 25c-shared's lab made
+  # "istiod drop its GatewayClass registration with no restart or error" -
+  # ISTIO_SESSION_HANDOFF.md #4). Coupling the mesh control plane's
+  # availability to this external Git source would buy nothing.
+  #
+  # wait: true is load-bearing. Without it this Kustomization reports Ready
+  # as soon as the apply returns, which is before the apiserver has
+  # ESTABLISHED the CRDs - and the upcoming istio-ingress Kustomization
+  # (the Gateway object itself) will dependsOn this one and needs the CRDs
+  # to actually be usable, not just applied.
+  wait: true
+  timeout: 3m0s
