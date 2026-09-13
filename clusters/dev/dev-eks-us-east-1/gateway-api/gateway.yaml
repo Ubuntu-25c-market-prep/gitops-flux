@@ -1,0 +1,86 @@
+# Kubernetes Gateway API, NOT networking.istio.io - this cluster
+# deliberately diverges from 25c-shared, which uses Istio's classic
+# Gateway/VirtualService API plus the istio/gateway Helm chart. Nothing
+# from infrastructures/base/istio-gateway is referenced here: with Gateway
+# API, istiod's own deployment controller provisions the Envoy data plane
+# directly from this object, so there is no chart to install.
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  # gateway-conventions.md §3's naming example is "ingressgateway" (what
+  # 25c-shared's classic networking.istio.io Gateway is named) - not used
+  # here on purpose. This object's `kind` is already `Gateway`; stacking
+  # "gateway" into the name too just repeats the type, and "ingress" reads
+  # as the Kubernetes `Ingress` API, which this explicitly is not. One
+  # shared listener per cluster, @istio owns the name either way.
+  name: gateway
+  namespace: platform-istio
+  labels:
+    # REVISION PINNING. This install has no default (unrevisioned) istiod -
+    # istio-base's defaultRevision is 1-30-3
+    # (infrastructures/dev/dev-eks-us-east-1/istio-base/patch.yaml). Istio's
+    # gateway deployment controller applies the same revision-matching
+    # rules to Gateway objects that it applies to sidecar injection: an
+    # object with no istio.io/rev label, in a namespace with no istio.io/rev
+    # label, resolves to the "default" revision - which does not exist
+    # here. The failure mode is the quiet one: the Gateway is accepted, no
+    # Deployment is ever created, and PROGRAMMED stays False with no
+    # obvious cause.
+    istio.io/rev: 1-30-3
+  annotations:
+    # Istio-specific, not part of the Gateway API spec: controls the KIND
+    # of Service the deployment controller generates. Default is
+    # LoadBalancer, which is what we want - documented here as the lever to
+    # flip to ClusterIP if a public/internal NLB is ever judged unnecessary
+    # for an ingress with no routes yet.
+    networking.istio.io/service-type: LoadBalancer
+spec:
+  # Created automatically by istiod at startup once the Gateway API CRDs
+  # exist - not something this repo installs (see gatewayclass output:
+  # `kubectl get gatewayclass istio`).
+  gatewayClassName: istio
+
+  # spec.infrastructure.annotations is the Gateway API v1.x standard way to
+  # get annotations onto the generated Service (and Deployment). It
+  # replaces the older Istio behavior of copying the Gateway's own
+  # metadata.annotations, which still works but isn't part of the portable
+  # API surface.
+  infrastructure:
+    annotations:
+      # No AWS Load Balancer Controller on this cluster - the legacy
+      # in-tree cloud provider inside EKS's managed control plane still
+      # honours these annotations directly, no addon needed. Same
+      # mechanism 25c-shared's istio-gateway Service patch uses.
+      service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+      # Internal-only for now: no DNS record and no public TLS exist yet
+      # (cert-manager/external-dns land later, additively - see the PR
+      # description). This VPC's private subnets carry
+      # kubernetes.io/role/internal-elb=1
+      # (terraform-infra-v2/resources/us-east-1/dev/network/config.yaml),
+      # so an internal NLB places correctly into them. Dropping this one
+      # annotation is how this goes public later - no other change needed.
+      service.beta.kubernetes.io/aws-load-balancer-internal: "true"
+    labels:
+      u25c.io/workstream: istio
+
+  listeners:
+    - name: http
+      port: 80
+      protocol: HTTP
+      # No `hostname:` - this listener accepts any Host header, and the
+      # HTTPRoutes that attach decide what actually routes. With no routes
+      # attached yet, Envoy's default 404 is the correct, verifiable state
+      # (same reasoning 25c-shared's route-less classic Gateway uses).
+      allowedRoutes:
+        namespaces:
+          # NOT the default (`Same`, which would confine every HTTPRoute to
+          # platform-istio). NOT `All` either: per
+          # ops-program/docs/gateway-conventions.md §2, this Gateway is
+          # owned by @istio and app teams own the HTTPRoutes in their own
+          # namespaces - the Gateway owner decides who may attach, which is
+          # exactly what `Selector` expresses. Widening to `All` later is a
+          # one-line change here that rewrites no HTTPRoute.
+          from: Selector
+          selector:
+            matchLabels:
+              u25c.io/istio-gateway-access: "true"

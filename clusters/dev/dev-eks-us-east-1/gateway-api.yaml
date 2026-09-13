@@ -1,0 +1,44 @@
+# gitops-flux/clusters/dev/dev-eks-us-east-1/gateway-api.yaml
+#
+# The Gateway API `Gateway` object (Kubernetes Gateway API, NOT the
+# Kubernetes `Ingress` API and NOT Istio's classic
+# networking.istio.io Gateway used on 25c-shared) gets its own Flux
+# Kustomization, and its content directory lives here under clusters/
+# rather than under infrastructures/dev/dev-eks-us-east-1/, for the same
+# CRD-ordering reason as gateway-api-crds.yaml and kyverno-policies on
+# 25c-shared: infrastructures/dev/dev-eks-us-east-1/ has no committed
+# kustomization.yaml, so kustomize-controller auto-generates one by
+# recursively walking every subdirectory it finds. A
+# gateway.networking.k8s.io object dropped there joins that aggregate
+# build, and its server-side dry-run against a CRD that might not be
+# registered yet would abort the ENTIRE `infrastructure` apply - taking
+# istiod, coredns, the CNI and everything else down with it.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: gateway-api
+  namespace: flux-system
+spec:
+  interval: 20h0m0s
+  retryInterval: 5m0s
+  path: ./clusters/dev/dev-eks-us-east-1/gateway-api
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  dependsOn:
+    # CRDs Established (gateway-api-crds.yaml sets wait: true).
+    - name: gateway-api-crds
+    # The platform-istio namespace and the istiod HelmRelease object.
+    - name: infrastructure
+  healthChecks:
+    # Not just "applied" - Ready. A HelmRelease can be applied while the
+    # chart is still installing, and istiod's GatewayClass registration
+    # happens only once the pod is actually serving. Without this the
+    # Gateway would apply against a cluster with no `istio` GatewayClass
+    # yet and sit Accepted=False until the next 20h reconcile.
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: istiod
+      namespace: flux-system
+  timeout: 10m0s

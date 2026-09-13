@@ -90,7 +90,7 @@
 /infrastructures/dev/dev-eks-us-east-1/istio-base/            @Ubuntu-25c-market-prep/istio
 /infrastructures/dev/dev-eks-us-east-1/istiod/                @Ubuntu-25c-market-prep/istio
 /infrastructures/dev/dev-eks-us-east-1/istio-cni/             @Ubuntu-25c-market-prep/istio
-/clusters/dev/dev-eks-us-east-1/istio-ingress/                @Ubuntu-25c-market-prep/istio
+/clusters/dev/dev-eks-us-east-1/gateway-api/                  @Ubuntu-25c-market-prep/istio
 
 # Security - kyverno, policy-reporter.
 /infrastructures/base/kyverno/                               @Ubuntu-25c-market-prep/security
