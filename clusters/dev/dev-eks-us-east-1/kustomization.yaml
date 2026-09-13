@@ -4,5 +4,6 @@ resources:
   - ../../base/2.4.0
   - infrastructures.yaml
   - gateway-api-crds.yaml
+  - gateway-api.yaml
 patches:
   - path: patch.yaml
