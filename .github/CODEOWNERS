@@ -27,6 +27,7 @@
 # Utils - sealed-secrets, cert-manager, external-dns.
 /infrastructures/base/sealed-secrets/                        @Ubuntu-25c-market-prep/utils
 /infrastructures/dev/25c-shared/sealed-secrets/              @Ubuntu-25c-market-prep/utils
+/infrastructures/dev/dev-eks-us-east-1/sealed-secrets/        @Ubuntu-25c-market-prep/utils
 /infrastructures/base/cert-manager/                          @Ubuntu-25c-market-prep/utils
 /infrastructures/dev/25c-shared/cert-manager/                @Ubuntu-25c-market-prep/utils
 /infrastructures/base/external-dns/                          @Ubuntu-25c-market-prep/utils
