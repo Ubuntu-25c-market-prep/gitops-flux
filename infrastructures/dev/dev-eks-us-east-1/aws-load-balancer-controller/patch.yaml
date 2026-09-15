@@ -1,0 +1,40 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: aws-load-balancer-controller
+  namespace: flux-system
+spec:
+  values:
+    # Chart default is 2 (a standby pod behind leader election, purely for
+    # faster failover). This cluster is 2x t3.medium with no spare capacity
+    # to reserve for standby replicas of a controller that reconciles
+    # infrequently - matches every other singleton on this cluster
+    # (istiod, aws-load-balancer-controller has no autoscale toggle to
+    # disable, unlike istiod's chart).
+    replicaCount: 1
+
+    # No nodeSelector/tolerations here, unlike a placement-pinned component
+    # on 25c-shared: this cluster has no u25c.io/pool node labels or taints
+    # at all - copying that block would leave the pod Pending forever
+    # against a label that exists on no node (same reasoning as
+    # infrastructures/dev/dev-eks-us-east-1/istiod/patch.yaml).
+    #
+    # It IS on the ingress data path (it owns the Gateway's Service/target
+    # group registration), so it keeps a high priority class.
+    priorityClassName: system-cluster-critical
+
+    # Dev sizing on a 2x t3.medium cluster. CPU request but no CPU limit,
+    # memory limit only - same reasoning as external-dns's overlay patch on
+    # 25c-shared: the request is what the scheduler reserves, a CPU limit
+    # would throttle the reconcile loop for no benefit since this pod is
+    # idle between AWS API syncs, and memory is not compressible so it gets
+    # a real ceiling.
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        memory: 256Mi
+
+    podLabels:
+      environment: dev

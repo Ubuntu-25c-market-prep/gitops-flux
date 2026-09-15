@@ -1,0 +1,77 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: aws-load-balancer-controller
+  namespace: flux-system
+spec:
+  chart:
+    spec:
+      chart: aws-load-balancer-controller
+      # appVersion v3.5.0. eks-charts (already registered - it's the AWS
+      # general chart store aws-vpc-cni also uses) publishes this chart.
+      version: "3.5.0"
+      sourceRef:
+        kind: HelmRepository
+        name: eks-charts
+        namespace: flux-system
+  interval: 20h0m0s
+  # kube-system always exists - not created by this release, unlike
+  # platform-istio (createNamespace: true on istio-base/istiod/istio-cni).
+  targetNamespace: kube-system
+  install:
+    createNamespace: false
+  # Without this Flux composes the release name as <targetNamespace>-<name>
+  # ("kube-system-aws-load-balancer-controller"), the chart derives the
+  # ServiceAccount name from that, and the IRSA subject stops matching the
+  # role's trust policy (system:serviceaccount:kube-system:aws-load-balancer-controller,
+  # terraform-infra-v2 eks/iam.yaml). Same trap external-dns and karpenter
+  # both hit (#70, #75).
+  releaseName: aws-load-balancer-controller
+  # The controller's IRSA role ARN embeds the AWS account id, and this repo
+  # is public, so it is NOT committed. Supplied by an out-of-band ConfigMap
+  # (aws-load-balancer-controller-irsa) in flux-system, created from the
+  # terraform output with a heredoc so this indentation is copied literally
+  # rather than reconstructed by hand (external-dns's HelmRelease explains
+  # why the heredoc form matters - stripping "# " from a non-heredoc comment
+  # can silently collapse this nesting):
+  #
+  # ARN=$(terraform -chdir=terraform-infra-v2/resources/us-east-1/dev/eks \
+  #   output -json irsa_role_arns | jq -r '."dev-irsa-aws-load-balancer-controller-us-east-1"')
+  #
+  # kubectl create configmap aws-load-balancer-controller-irsa -n flux-system \
+  #   --from-literal=values.yaml="$(cat <<EOF
+  # serviceAccount:
+  #   annotations:
+  #     eks.amazonaws.com/role-arn: ${ARN}
+  # EOF
+  # )"
+  #
+  # valuesFrom merges after spec.values, so this only adds the SA annotation.
+  # optional: false on purpose - without the annotation the pod falls back to
+  # the node role and every AWS API call fails with AccessDenied, so failing
+  # the release outright is the louder, better outcome.
+  valuesFrom:
+    - kind: ConfigMap
+      name: aws-load-balancer-controller-irsa
+      valuesKey: values.yaml
+      optional: false
+  values:
+    # The other half of the IRSA contract: the trust policy conditions on
+    # system:serviceaccount:kube-system:aws-load-balancer-controller, so the
+    # name is pinned here rather than left to the chart's fullname template.
+    serviceAccount:
+      create: true
+      name: aws-load-balancer-controller
+
+    # Required by the chart - every AWS resource the controller creates gets
+    # tagged elbv2.k8s.aws/cluster=<this>, which is also what the IRSA
+    # policy's Condition blocks scope it to (terraform-infra-v2,
+    # dev-AWSLoadBalancerControllerPolicy-us-east-1).
+    clusterName: dev-eks-us-east-1
+
+    # Skips IMDS discovery calls on every reconcile. Neither value carries
+    # the AWS account id, so both are safe in a public repo - same reasoning
+    # infrastructures/dev/dev-eks-us-east-1/aws-vpc-cni/patch.yaml already
+    # states for this cluster's VPC id.
+    region: us-east-1
+    vpcId: vpc-0849e0f6efc203ff5
