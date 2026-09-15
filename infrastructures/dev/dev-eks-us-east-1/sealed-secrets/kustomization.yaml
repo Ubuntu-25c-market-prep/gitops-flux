@@ -1,7 +1,20 @@
 # gitops-flux/infrastructures/dev/dev-eks-us-east-1/sealed-secrets
+#
+# Deliberately NO top-level `namespace:` here, unlike 25c-shared's overlay.
+# That one works there only because 25c-shared has an explicit Namespace
+# object for sealed-secrets in 000-cluster-wide-resources/ (applied before
+# anything namespaced needs it) - this cluster has no
+# 000-cluster-wide-resources/ at all. Without a pre-existing namespace,
+# `namespace: sealed-secrets` here rewrites the HelmRelease's own
+# metadata.namespace to a namespace that doesn't exist yet, and applying
+# ANY object into a nonexistent namespace fails outright - confirmed via
+# `namespaces "sealed-secrets" not found` on this Kustomization. The
+# HelmRelease stays in flux-system instead (matching istio-base/istiod/
+# istio-cni's overlays on this cluster) and install.createNamespace: true
+# in base/sealed-secrets/helmrelease.yaml creates the target namespace for
+# what Helm actually installs.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-namespace: sealed-secrets
 resources:
   - ../../../base/sealed-secrets
 patches:
