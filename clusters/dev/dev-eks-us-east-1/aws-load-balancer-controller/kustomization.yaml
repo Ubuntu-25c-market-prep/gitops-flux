@@ -1,0 +1,26 @@
+# gitops-flux/clusters/dev/dev-eks-us-east-1/aws-load-balancer-controller
+#
+# Both the HelmRelease and its SealedSecret live here together, and neither
+# lives under infrastructures/dev/dev-eks-us-east-1/ - not only for the usual
+# CRD-ordering reason (the SealedSecret's CRD ships with sealed-secrets, part
+# of the `infrastructure` Kustomization), but because of a real ordering
+# constraint this pairing creates: the HelmRelease's valuesFrom needs the
+# Secret the SealedSecret produces. Had the HelmRelease stayed inside
+# `infrastructure` while only the SealedSecret moved out to a Kustomization
+# depending on `infrastructure`, the two would deadlock each other -
+# `infrastructure` never reports Ready while this HelmRelease can't install
+# for want of a Secret that only exists once `infrastructure` (transitively)
+# already reported Ready. Keeping both here, gated only on sealed-secrets via
+# aws-load-balancer-controller.yaml's healthCheck, breaks that cycle.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../../../infrastructures/base/aws-load-balancer-controller
+  - sealedsecret.yaml
+patches:
+  - path: patch.yaml
+    target:
+      kind: HelmRelease
+labels:
+  - pairs:
+      kustomize.toolkit.fluxcd.io/prune: enabled

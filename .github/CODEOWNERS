@@ -93,6 +93,16 @@
 /infrastructures/dev/dev-eks-us-east-1/istio-cni/             @Ubuntu-25c-market-prep/istio
 /clusters/dev/dev-eks-us-east-1/gateway-api/                  @Ubuntu-25c-market-prep/istio
 
+# Same block: the controller that turns the Gateway's Service into a real
+# AWS NLB (ip-target mode, registering pod IPs directly - see
+# infrastructures/base/aws-load-balancer-controller/helmrelease.yaml). Its
+# only consumer on this cluster is the Istio Gateway, so it stays with
+# @istio rather than falling through to the * fallback the way
+# aws-vpc-cni/aws-ebs-csi-driver currently do (a pre-existing gap, not
+# addressed here).
+/infrastructures/base/aws-load-balancer-controller/            @Ubuntu-25c-market-prep/istio
+/clusters/dev/dev-eks-us-east-1/aws-load-balancer-controller/  @Ubuntu-25c-market-prep/istio
+
 # Security - kyverno, policy-reporter.
 /infrastructures/base/kyverno/                               @Ubuntu-25c-market-prep/security
 /infrastructures/dev/25c-shared/kyverno/                     @Ubuntu-25c-market-prep/security
