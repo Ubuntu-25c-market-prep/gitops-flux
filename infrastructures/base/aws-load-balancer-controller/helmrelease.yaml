@@ -28,30 +28,33 @@ spec:
   # both hit (#70, #75).
   releaseName: aws-load-balancer-controller
   # The controller's IRSA role ARN embeds the AWS account id, and this repo
-  # is public, so it is NOT committed. Supplied by an out-of-band ConfigMap
-  # (aws-load-balancer-controller-irsa) in flux-system, created from the
-  # terraform output with a heredoc so this indentation is copied literally
-  # rather than reconstructed by hand (external-dns's HelmRelease explains
-  # why the heredoc form matters - stripping "# " from a non-heredoc comment
-  # can silently collapse this nesting):
+  # is public, so it is NOT committed in plaintext. Supplied by a
+  # SealedSecret (clusters/dev/dev-eks-us-east-1/aws-load-balancer-controller/),
+  # decrypted in-cluster by the sealed-secrets controller into a real Secret
+  # of the same name - unlike external-dns/cert-manager/karpenter's
+  # ConfigMap-plus-manual-kubectl-step pattern on 25c-shared, this one needs
+  # no live cluster access to update: kubeseal encrypts locally against the
+  # controller's public cert (see that SealedSecret's own header comment for
+  # the exact regenerate command), and the encrypted blob commits to git like
+  # anything else.
   #
-  # ARN=$(terraform -chdir=terraform-infra-v2/resources/us-east-1/dev/eks \
-  #   output -json irsa_role_arns | jq -r '."dev-irsa-aws-load-balancer-controller-us-east-1"')
-  #
-  # kubectl create configmap aws-load-balancer-controller-irsa -n flux-system \
-  #   --from-literal=values.yaml="$(cat <<EOF
-  # serviceAccount:
-  #   annotations:
-  #     eks.amazonaws.com/role-arn: ${ARN}
-  # EOF
-  # )"
+  # This HelmRelease itself lives under clusters/, alongside its
+  # SealedSecret, not in an overlay under this cluster's infrastructures/
+  # path - not only the usual CRD-ordering reason (the SealedSecret's CRD
+  # ships with sealed-secrets, part of the `infrastructure` Kustomization),
+  # but because valuesFrom creates a real ordering dependency on that
+  # Secret: if this HelmRelease stayed inside `infrastructure` while only the
+  # SealedSecret moved out to a Kustomization depending on `infrastructure`,
+  # the two would deadlock each other. See
+  # clusters/dev/dev-eks-us-east-1/aws-load-balancer-controller.yaml for the
+  # full reasoning.
   #
   # valuesFrom merges after spec.values, so this only adds the SA annotation.
   # optional: false on purpose - without the annotation the pod falls back to
   # the node role and every AWS API call fails with AccessDenied, so failing
   # the release outright is the louder, better outcome.
   valuesFrom:
-    - kind: ConfigMap
+    - kind: Secret
       name: aws-load-balancer-controller-irsa
       valuesKey: values.yaml
       optional: false

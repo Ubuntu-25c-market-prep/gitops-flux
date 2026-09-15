@@ -100,8 +100,8 @@
 # @istio rather than falling through to the * fallback the way
 # aws-vpc-cni/aws-ebs-csi-driver currently do (a pre-existing gap, not
 # addressed here).
-/infrastructures/base/aws-load-balancer-controller/                   @Ubuntu-25c-market-prep/istio
-/infrastructures/dev/dev-eks-us-east-1/aws-load-balancer-controller/  @Ubuntu-25c-market-prep/istio
+/infrastructures/base/aws-load-balancer-controller/            @Ubuntu-25c-market-prep/istio
+/clusters/dev/dev-eks-us-east-1/aws-load-balancer-controller/  @Ubuntu-25c-market-prep/istio
 
 # Security - kyverno, policy-reporter.
 /infrastructures/base/kyverno/                               @Ubuntu-25c-market-prep/security

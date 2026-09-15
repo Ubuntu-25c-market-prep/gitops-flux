@@ -1,0 +1,55 @@
+# gitops-flux/clusters/dev/dev-eks-us-east-1/aws-load-balancer-controller.yaml
+#
+# Both the controller's HelmRelease and its IRSA SealedSecret live under
+# clusters/dev/dev-eks-us-east-1/aws-load-balancer-controller/, not
+# infrastructures/dev/dev-eks-us-east-1/, for two stacked reasons:
+#
+# 1. CRD ordering, same as gateway-api.yaml and kyverno-policies on
+#    25c-shared: the SealedSecret's CRD (bitnami.com/v1alpha1) ships with the
+#    sealed-secrets HelmRelease, installed as part of the `infrastructure`
+#    Kustomization. infrastructures/dev/dev-eks-us-east-1/ has no committed
+#    kustomization.yaml, so kustomize-controller auto-generates one by
+#    recursively walking every subdirectory it finds - a SealedSecret object
+#    dropped there would join that aggregate build, and its server-side
+#    dry-run against a CRD that might not be registered yet (a from-scratch
+#    bootstrap) would abort the ENTIRE `infrastructure` apply.
+#
+# 2. A genuine circular-readiness risk, specific to this pairing. The
+#    HelmRelease's valuesFrom needs the Secret the SealedSecret produces. If
+#    the HelmRelease had stayed inside `infrastructure` while only the
+#    SealedSecret moved out to a Kustomization depending on `infrastructure`,
+#    the two would deadlock: `infrastructure` never reports Ready while this
+#    HelmRelease can't install for want of a Secret that only gets created
+#    once `infrastructure` (transitively) already reports Ready. Keeping the
+#    HelmRelease and the SealedSecret together, in one Kustomization gated
+#    only on sealed-secrets (not on the whole of `infrastructure` reporting
+#    Ready, including itself), breaks that cycle.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: aws-load-balancer-controller
+  namespace: flux-system
+spec:
+  interval: 20h0m0s
+  retryInterval: 5m0s
+  path: ./clusters/dev/dev-eks-us-east-1/aws-load-balancer-controller
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  dependsOn:
+    # The sealed-secrets CRDs and controller, and everything else in
+    # `infrastructure` this cluster already has (istiod, coredns, ...) -
+    # none of which this Kustomization's own contents feed back into, so no
+    # cycle.
+    - name: infrastructure
+  healthChecks:
+    # Not just "applied" - Ready. The sealed-secrets controller has to
+    # actually be serving before it can decrypt the SealedSecret into a real
+    # Secret; a HelmRelease being applied doesn't mean helm-controller has
+    # finished installing the chart yet.
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: sealed-secrets
+      namespace: flux-system
+  timeout: 5m0s
