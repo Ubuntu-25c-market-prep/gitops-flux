@@ -5,18 +5,20 @@
 # against `flux build kustomization`, not `kubectl kustomize` (see that
 # file's comment for why the two disagree).
 #
-# No patch in this PR. base/cert-manager/certificate-wildcard.yaml defaults
-# to letsencrypt-staging and secretName wildcard-25c-team1-art-staging-tls
-# ON PURPOSE - a cluster syncing this library without an overlay must not be
-# able to spend the production rate limit. That default IS the staging step;
-# the prod cutover is a follow-up PR's patch-certificate.yaml, once this
-# proves DNS-01 + IRSA end to end.
+# Prod cutover: staging proved DNS-01 + IRSA end to end (order valid,
+# Ready=True, issued by "(STAGING) Artificial Amaranth YE1"). patch-certificate.yaml
+# flips issuerRef to letsencrypt-prod and secretName to the real Secret name
+# the Gateway's HTTPS listener names directly - see that file's own header.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - ../../../../infrastructures/base/cert-manager/clusterissuer-staging.yaml
   - ../../../../infrastructures/base/cert-manager/clusterissuer-prod.yaml
   - ../../../../infrastructures/base/cert-manager/certificate-wildcard.yaml
+patches:
+  - path: patch-certificate.yaml
+    target:
+      kind: Certificate
 labels:
   - pairs:
       kustomize.toolkit.fluxcd.io/prune: enabled
