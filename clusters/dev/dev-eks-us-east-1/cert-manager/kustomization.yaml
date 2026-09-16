@@ -1,0 +1,33 @@
+# gitops-flux/clusters/dev/dev-eks-us-east-1/cert-manager
+#
+# References base/cert-manager/helmrelease.yaml directly, as a FILE, not the
+# base/cert-manager DIRECTORY. That directory's own kustomization.yaml also
+# pulls in clusterissuer-staging.yaml, clusterissuer-prod.yaml and
+# certificate-wildcard.yaml - all cert-manager.io/v1 CRs, which hit the exact
+# same CRD-ordering problem this Kustomization already exists to dodge for
+# the SealedSecret. Those three live in a separate Kustomization
+# (cert-manager-issuers.yaml) that depends on THIS one being Ready, not on
+# `infrastructure`.
+#
+# VERIFIED, NOT ASSUMED: `kubectl kustomize`/`kustomize build` reject this
+# file reference outright ("security; file ... is not in or below ...") -
+# their default load restrictor confines resources: to the kustomization's
+# own directory tree. Flux's kustomize-controller uses a more permissive
+# restrictor and builds this correctly; confirmed with
+# `flux build kustomization cert-manager --path ./clusters/dev/dev-eks-us-east-1/cert-manager
+# --kustomization-file ./clusters/dev/dev-eks-us-east-1/cert-manager.yaml --dry-run`,
+# which mimics the controller's actual build behavior without needing a live
+# cluster. Don't "fix" this file reference based on a local `kubectl
+# kustomize` failure - check with `flux build` first.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../../../infrastructures/base/cert-manager/helmrelease.yaml
+  - sealedsecret.yaml
+patches:
+  - path: patch.yaml
+    target:
+      kind: HelmRelease
+labels:
+  - pairs:
+      kustomize.toolkit.fluxcd.io/prune: enabled

@@ -1,0 +1,61 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: cert-manager
+  namespace: flux-system
+spec:
+  # Base assumes the cert-manager namespace already exists (created by
+  # 000-cluster-wide-resources on 25c-shared) and sets no
+  # install.createNamespace. This cluster has no 000-cluster-wide-resources/
+  # at all - left alone this fails the exact way sealed-secrets did in #200:
+  # "namespaces \"cert-manager\" not found". Same fix, in the overlay, not
+  # base: base stays reusable for a cluster that DOES pre-create it.
+  install:
+    createNamespace: true
+  # The controller's IRSA role ARN embeds the AWS account id, and this repo
+  # is public, so it is NOT committed in plaintext. Supplied by a
+  # SealedSecret (sealedsecret.yaml, this directory), decrypted in-cluster by
+  # the sealed-secrets controller into a real Secret of the same name -
+  # unlike base's own ConfigMap-plus-manual-kubectl-step comment (that's
+  # 25c-shared's pattern), this needs no live cluster access to update:
+  # kubeseal encrypts locally against sealed-secrets' public cert (see that
+  # file's own header for the regenerate command), and the encrypted blob
+  # commits to git like anything else.
+  valuesFrom:
+    - kind: Secret
+      name: cert-manager-irsa
+      valuesKey: values.yaml
+      optional: false
+  values:
+    # Dev sizing on a 2x t3.medium cluster, copied from 25c-shared's overlay
+    # (infrastructures/dev/25c-shared/cert-manager/patch.yaml) - already
+    # small, no reason to rediscover these numbers.
+    replicaCount: 1
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        memory: 256Mi
+    podLabels:
+      environment: dev
+    webhook:
+      replicaCount: 1
+      resources:
+        requests:
+          cpu: 20m
+          memory: 64Mi
+        limits:
+          memory: 128Mi
+      podLabels:
+        environment: dev
+    cainjector:
+      replicaCount: 1
+      resources:
+        requests:
+          cpu: 20m
+          memory: 128Mi
+        limits:
+          memory: 256Mi
+      podLabels:
+        environment: dev
