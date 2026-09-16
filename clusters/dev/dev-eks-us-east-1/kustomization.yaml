@@ -7,5 +7,6 @@ resources:
   - gateway-api.yaml
   - aws-load-balancer-controller.yaml
   - cert-manager.yaml
+  - cert-manager-issuers.yaml
 patches:
   - path: patch.yaml
