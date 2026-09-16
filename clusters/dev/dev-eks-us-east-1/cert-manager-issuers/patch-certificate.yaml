@@ -1,0 +1,29 @@
+# Environment-specific half of the wildcard certificate, mirroring
+# infrastructures/dev/25c-shared/cert-manager/patch-certificate.yaml.
+#
+# base/cert-manager/certificate-wildcard.yaml deliberately points at
+# letsencrypt-staging and writes to a throwaway Secret - the protection that
+# keeps a cluster syncing the base library without an overlay from spending
+# the production rate limit (5 duplicate certificates per week per name set,
+# no reset, no appeal). The prod issuer is environment-specific and belongs
+# here, exactly like 25c-shared's own cutover.
+#
+# Staging has done its job: order valid, Ready=True, issued by "(STAGING)
+# Artificial Amaranth YE1" - proved the DNS-01 path and the cert-manager IRSA
+# role (terraform-infra-v2#30/#31) end to end. Switching to prod is the
+# correct next step.
+#
+# Changing secretName makes cert-manager issue into a NEW Secret and leave
+# the staging one behind - nothing is overwritten. The Gateway's HTTPS
+# listener (gateway.yaml, this PR) names wildcard-25c-team1-art-tls directly,
+# so it only ever sees the prod cert once this Secret exists.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: wildcard-25c-team1-art
+  namespace: platform-istio
+spec:
+  issuerRef:
+    kind: ClusterIssuer
+    name: letsencrypt-prod
+  secretName: wildcard-25c-team1-art-tls

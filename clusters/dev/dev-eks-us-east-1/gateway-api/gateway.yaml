@@ -96,15 +96,14 @@ spec:
       # Grafana, Rancher, Kiali and friends need real user access, same as
       # 25c-shared's already-public gateway.
       #
-      # SAFE right now specifically because there are zero HTTPRoutes: the
-      # only listener is plain HTTP/80 with no TLS (no cert-manager on this
-      # cluster yet), so being public today just means the internet gets
-      # Envoy's 404 instead of a VPC-only 404 - nothing to intercept.
-      # That stops being true the moment a real HTTPRoute attaches a real
-      # backend: DO NOT route anything through this Gateway until an HTTPS
-      # listener with a real certificate exists (see the follow-up PR that
-      # adds cert-manager). Enforce that as a review rule on every
-      # HTTPRoute PR, not as a property of this file.
+      # Was safe with only a plain HTTP/80 listener specifically because
+      # there were zero HTTPRoutes - nothing to intercept. That HTTPS
+      # listener now exists (below, cert-manager#203/#204 proved DNS-01 +
+      # IRSA end to end on the real prod certificate) - so the same rule
+      # now applies for real: DO NOT route anything through this Gateway's
+      # http listener alone. Any HTTPRoute a namespace attaches should
+      # target both listeners (or redirect http -> https), never http only.
+      # Enforce that as a review rule on every HTTPRoute PR.
     labels:
       u25c.io/workstream: istio
 
@@ -125,6 +124,41 @@ spec:
           # namespaces - the Gateway owner decides who may attach, which is
           # exactly what `Selector` expresses. Widening to `All` later is a
           # one-line change here that rewrites no HTTPRoute.
+          from: Selector
+          selector:
+            matchLabels:
+              u25c.io/istio-gateway-access: "true"
+
+    # APPENDED, not a replacement - the http listener above stays exactly as
+    # it was. Istio adds :443 to the EXISTING gateway-istio Service, so the
+    # NLB's address is unchanged and nothing that already resolved it (there
+    # is no DNS record yet, but the principle holds for later) has to
+    # change. This is the additive step planned all the way back when the
+    # NLB was first made public (#198) and when the AWS Load Balancer
+    # Controller took it over (#202): only cert-manager was still missing.
+    - name: https
+      port: 443
+      protocol: HTTPS
+      # Single-label hostnames only, per ops-program/docs/gateway-conventions.md
+      # §3: the wildcard cert's SANs are *.25c-team1.art + apex, so a
+      # two-label host would fail the TLS handshake before routing runs at
+      # all - not a style choice, the cert literally cannot serve it.
+      hostname: "*.25c-team1.art"
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - kind: Secret
+            # cert-manager writes this Secret into platform-istio - the same
+            # namespace as this Gateway - so no ReferenceGrant is needed.
+            # letsencrypt-prod, cut over in
+            # clusters/dev/dev-eks-us-east-1/cert-manager-issuers/patch-certificate.yaml
+            # once staging proved DNS-01 + IRSA end to end.
+            name: wildcard-25c-team1-art-tls
+      # Same ownership boundary as the http listener - see its comment
+      # above. Both listeners share one selector, so a namespace granted
+      # access gets both http and https, never just one.
+      allowedRoutes:
+        namespaces:
           from: Selector
           selector:
             matchLabels:
