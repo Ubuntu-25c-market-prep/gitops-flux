@@ -1,0 +1,13 @@
+# gitops-flux/infrastructures/dev/dev-eks-us-east-1/000-cluster-wide-resources/namespace
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  # Already on the cluster, created by Helm (install.createNamespace: true).
+  # These files adopt them into Git; the HelmReleases are unchanged.
+  - platform-istio.yaml
+  - sealed-secrets.yaml
+  - cert-manager.yaml
+
+  # NEVER add kube-system or flux-system here. Pruning is on, so deleting such
+  # a file later would make Flux delete the namespace - for flux-system, Flux
+  # itself.
