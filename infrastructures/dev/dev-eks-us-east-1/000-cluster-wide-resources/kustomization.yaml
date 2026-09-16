@@ -1,0 +1,5 @@
+# gitops-flux/infrastructures/dev/dev-eks-us-east-1/000-cluster-wide-resources
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+- namespace
