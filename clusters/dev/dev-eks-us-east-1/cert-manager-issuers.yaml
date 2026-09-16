@@ -1,0 +1,40 @@
+# gitops-flux/clusters/dev/dev-eks-us-east-1/cert-manager-issuers.yaml
+#
+# The three cert-manager.io/v1 CRs base/cert-manager/kustomization.yaml
+# bundles alongside the HelmRelease - clusterissuer-staging.yaml,
+# clusterissuer-prod.yaml, certificate-wildcard.yaml - get their OWN Flux
+# Kustomization, same escape-hatch pattern as kyverno-policies on 25c-shared
+# and this cluster's own gateway-api.yaml: their CRDs ship inside the
+# cert-manager chart, installed by the HelmRelease in
+# clusters/dev/dev-eks-us-east-1/cert-manager/. Applying them in the same
+# pass as that HelmRelease (or worse, inside the auto-walked
+# infrastructures/dev/dev-eks-us-east-1/ path) would dry-run them against a
+# CRD that might not exist yet.
+#
+# dependsOn the cert-manager Kustomization specifically, not `infrastructure`
+# - the CRDs and the webhook that validates these CRs both come from that
+# HelmRelease, not from anything infrastructure/ installs.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: cert-manager-issuers
+  namespace: flux-system
+spec:
+  interval: 20h0m0s
+  retryInterval: 5m0s
+  path: ./clusters/dev/dev-eks-us-east-1/cert-manager-issuers
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  dependsOn:
+    - name: cert-manager
+  healthChecks:
+    # Ready, not just applied - the CRDs and the validating webhook cert
+    # (cainjector) both need the chart's actual install to have finished,
+    # not just the HelmRelease object to exist.
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: cert-manager
+      namespace: flux-system
+  timeout: 5m0s
