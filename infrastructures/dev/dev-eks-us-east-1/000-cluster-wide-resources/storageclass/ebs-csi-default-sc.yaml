@@ -1,0 +1,28 @@
+# The cluster's default StorageClass - a PVC that names no storageClassName
+# gets an EBS volume from this.
+#
+# Identical to 25c-shared's ebs-csi-default-sc, which was created by hand and
+# was never in git. Same name on purpose: base/teleport-cluster and
+# base/authentik name it explicitly, and base/kube-prometheus-stack (among
+# others) relies on there being a default.
+#
+# EKS 1.30+ no longer marks the built-in gp2 class as default, so before this
+# the cluster had no default at all and such PVCs sat Pending forever. gp2 is
+# left alone (not default, unused); exactly one class may carry the
+# is-default-class annotation.
+#
+# parameters are immutable - changing them later (e.g. type: gp3) means
+# deleting and recreating the class. No parameters = the driver's default,
+# gp3, same as 25c-shared.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: ebs-csi-default-sc
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "true"
+provisioner: ebs.csi.aws.com
+reclaimPolicy: Delete
+# Creates the volume only once the pod is scheduled, in that pod's AZ - an
+# EBS volume can only attach to a node in its own AZ, and nodes span 1a/1b.
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
