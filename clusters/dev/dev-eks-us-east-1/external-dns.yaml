@@ -1,0 +1,48 @@
+# gitops-flux/clusters/dev/dev-eks-us-east-1/external-dns.yaml
+#
+# Both the HelmRelease and its IRSA SealedSecret live here together, under
+# clusters/, for the same two reasons as aws-load-balancer-controller.yaml
+# and cert-manager.yaml:
+#
+# 1. CRD ordering: the SealedSecret's CRD (bitnami.com/v1alpha1) ships with
+#    sealed-secrets, part of the `infrastructure` Kustomization.
+#    infrastructures/dev/dev-eks-us-east-1/ has no committed kustomization.yaml,
+#    so kustomize-controller auto-generates one by recursively walking every
+#    subdirectory it finds - a SealedSecret dropped there joins that aggregate
+#    build, and its server-side dry-run against a CRD that might not be
+#    registered yet would abort the ENTIRE `infrastructure` apply.
+#
+# 2. A genuine circular-readiness risk. This HelmRelease's valuesFrom needs
+#    the Secret the SealedSecret produces. If the HelmRelease stayed inside
+#    infrastructures/dev/dev-eks-us-east-1/ while only the SealedSecret moved
+#    out to a Kustomization depending on `infrastructure`, the two would
+#    deadlock each other - `infrastructure` never reports Ready while this
+#    HelmRelease can't install for want of a Secret that only exists once
+#    `infrastructure` (transitively) already reports Ready. Keeping both here,
+#    gated only on sealed-secrets' own readiness, breaks that cycle.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: external-dns
+  namespace: flux-system
+spec:
+  interval: 20h0m0s
+  retryInterval: 5m0s
+  path: ./clusters/dev/dev-eks-us-east-1/external-dns
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  dependsOn:
+    # The sealed-secrets CRDs and controller, and everything else in
+    # `infrastructure` this cluster already has - none of which this
+    # Kustomization's own contents feed back into, so no cycle.
+    - name: infrastructure
+  healthChecks:
+    # Not just "applied" - Ready. sealed-secrets has to actually be serving
+    # before it can decrypt the SealedSecret into a real Secret.
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: sealed-secrets
+      namespace: flux-system
+  timeout: 5m0s

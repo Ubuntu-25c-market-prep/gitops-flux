@@ -1,0 +1,81 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: external-dns
+  namespace: flux-system
+spec:
+  # Base assumes the external-dns namespace already exists (created by
+  # 000-cluster-wide-resources on 25c-shared) and sets no
+  # install.createNamespace. This cluster has no 000-cluster-wide-resources/
+  # namespace entry for external-dns - left alone this fails the exact way
+  # sealed-secrets did in #201 and cert-manager avoided in #203: "namespaces
+  # \"external-dns\" not found". Same fix, in the overlay, not base: base
+  # stays reusable for a cluster that DOES pre-create it.
+  install:
+    createNamespace: true
+  # The controller's IRSA role ARN embeds the AWS account id, and this repo
+  # is public, so it is NOT committed in plaintext. Supplied by a
+  # SealedSecret (sealedsecret.yaml, this directory), decrypted in-cluster by
+  # the sealed-secrets controller into a real Secret of the same name - same
+  # pattern as aws-load-balancer-controller and cert-manager, not base's own
+  # ConfigMap-plus-manual-kubectl-step comment (that's 25c-shared's pattern,
+  # explicitly rejected for this cluster - see #199/#200).
+  valuesFrom:
+    - kind: Secret
+      name: external-dns-irsa
+      valuesKey: values.yaml
+      optional: false
+  values:
+    # This cluster's identity in the TXT ownership registry - every overlay
+    # must set its own (base deliberately leaves it unset; see
+    # base/external-dns/helmrelease.yaml). 25c-shared uses u25c-shared;
+    # dev-eks-us-east-1 gets its own so the two clusters, sharing the same
+    # zone, never claim each other's records.
+    txtOwnerId: dev-eks-us-east-1
+
+    # This cluster uses Kubernetes Gateway API, not Istio's classic
+    # Gateway/VirtualService API (no istio-gateway chart is installed here -
+    # see gateway-api.yaml). gateway-httproute reads the Gateway's own
+    # status.addresses directly and publishes a record per HTTPRoute
+    # hostname, so no Service needs an
+    # external-dns.alpha.kubernetes.io/hostname annotation at all - replaces
+    # base's `service`/`ingress` sources entirely rather than adding to them,
+    # deliberately not following 25c-shared's hand-maintained
+    # hostname-annotation list (its own base chart comment already predicts
+    # that doesn't scale past 4-5 names). The chart derives this source's
+    # RBAC (gateway.networking.k8s.io Gateway/HTTPRoute read access)
+    # automatically from this list.
+    sources:
+      - gateway-httproute
+
+    # Reconcile interval - the chart default, stated explicitly (matches
+    # 25c-shared's own overlay). The zone is small so dev keeps it; a
+    # quieter environment can raise this to cut Route 53 API calls without
+    # changing base.
+    interval: 1m
+
+    # Dev sizing on a 2x t3.medium cluster, matched to sealed-secrets and
+    # cert-manager in this overlay (no u25c.io/pool nodes exist yet on this
+    # cluster, so no nodeSelector/tolerations here - unlike 25c-shared's
+    # overlay, which places this on its platform Karpenter pool).
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        memory: 256Mi
+
+    podLabels:
+      environment: dev
+
+    # Top-level, not under global: - that is cert-manager's shape, not this
+    # chart's. The wrong place is accepted by Helm, ignored silently, and
+    # leaves the pod at priority 0, evictable by anything that declares a
+    # class.
+    priorityClassName: system-cluster-critical
+
+    # No podDisruptionBudget, deliberately. The chart hardcodes replicas: 1
+    # (no replicaCount value exists to change it - verified against 1.21.1),
+    # and minAvailable: 1 against a single replica permits ZERO voluntary
+    # evictions - consolidation and spot drain would stop indefinitely and
+    # present as this cluster being broken.

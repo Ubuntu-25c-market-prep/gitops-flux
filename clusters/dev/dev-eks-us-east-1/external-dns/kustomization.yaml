@@ -1,0 +1,18 @@
+# gitops-flux/clusters/dev/dev-eks-us-east-1/external-dns
+#
+# References the whole base/external-dns directory (unlike cert-manager,
+# which references helmrelease.yaml as a file) - base/external-dns's own
+# kustomization.yaml pulls in nothing but that one HelmRelease, so there is
+# no bundled CR to dodge the CRD-ordering problem for.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../../../infrastructures/base/external-dns
+  - sealedsecret.yaml
+patches:
+  - path: patch.yaml
+    target:
+      kind: HelmRelease
+labels:
+  - pairs:
+      kustomize.toolkit.fluxcd.io/prune: enabled

@@ -8,5 +8,6 @@ resources:
   - aws-load-balancer-controller.yaml
   - cert-manager.yaml
   - cert-manager-issuers.yaml
+  - external-dns.yaml
 patches:
   - path: patch.yaml
