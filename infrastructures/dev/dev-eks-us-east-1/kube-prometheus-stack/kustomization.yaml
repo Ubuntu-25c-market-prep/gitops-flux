@@ -1,0 +1,74 @@
+# gitops-flux/infrastructures/dev/dev-eks-us-east-1/kube-prometheus-stack
+#
+# Prometheus only - Grafana and Alertmanager are switched off in patch.yaml.
+# The shared base carries things this cluster cannot use yet, removed below
+# and in patch.yaml:
+#
+# - Thanos (thanos-objstore-secret + prometheusSpec.thanos + the
+#   prometheus-irsa valuesFrom): no bucket and no IRSA role exist for it in
+#   terraform-infra-v2. The missing ConfigMap alone fails the install.
+# - Grafana authentik SSO (grafana-authentik-oauth SealedSecret +
+#   grafana.ini): authentik is not on this cluster, and the SealedSecret was
+#   sealed with 25c-shared's controller key, so it cannot decrypt here.
+# - The PrometheusRules: their CRD ships with this HelmRelease. On a fresh
+#   cluster the CRD does not exist when the `infrastructure` Kustomization
+#   dry-runs, and one unknown kind aborts that ENTIRE apply. Bring them back
+#   in a follow-up once the CRDs are registered.
+# - The Grafana dashboard ConfigMaps: there is no Grafana to load them.
+#
+# No top-level `namespace:` - the HelmRelease stays in flux-system like every
+# other overlay on this cluster.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../../base/kube-prometheus-stack
+patches:
+  - path: patch.yaml
+    target:
+      kind: HelmRelease
+  - patch: |-
+      $patch: delete
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: thanos-objstore-secret
+        namespace: monitoring
+  - patch: |-
+      $patch: delete
+      apiVersion: bitnami.com/v1alpha1
+      kind: SealedSecret
+      metadata:
+        name: grafana-authentik-oauth
+        namespace: monitoring
+  - patch: |-
+      $patch: delete
+      apiVersion: monitoring.coreos.com/v1
+      kind: PrometheusRule
+      metadata:
+        name: platform-alerts
+        namespace: monitoring
+  - patch: |-
+      $patch: delete
+      apiVersion: monitoring.coreos.com/v1
+      kind: PrometheusRule
+      metadata:
+        name: monitoring-workstream-alerts
+        namespace: monitoring
+  - patch: |-
+      $patch: delete
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: grafana-dashboard-platform-overview
+        namespace: monitoring
+  - patch: |-
+      $patch: delete
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: grafana-dashboard-monitoring-workstream
+        namespace: monitoring
+
+labels:
+  - pairs:
+      kustomize.toolkit.fluxcd.io/prune: enabled
