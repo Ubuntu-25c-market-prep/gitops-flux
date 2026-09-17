@@ -7,6 +7,8 @@ resources:
   - platform-istio.yaml
   - sealed-secrets.yaml
   - cert-manager.yaml
+  # New with kube-prometheus-stack, not adopted.
+  - monitoring.yaml
 
   # NEVER add kube-system or flux-system here. Pruning is on, so deleting such
   # a file later would make Flux delete the namespace - for flux-system, Flux

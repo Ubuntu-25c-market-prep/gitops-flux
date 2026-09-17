@@ -1,0 +1,45 @@
+# HelmRelease is a CRD, so this is a JSON merge patch: `null` deletes a key.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: kube-prometheus-stack
+  namespace: flux-system
+spec:
+  # The prometheus-irsa ConfigMap only feeds Thanos - see kustomization.yaml.
+  valuesFrom: null
+  values:
+    prometheus:
+      prometheusSpec:
+        thanos: null
+        retention: 7d
+        # 2x t3.medium (4 GiB each) is the whole cluster - sized below
+        # 25c-shared's overlay, which had a dedicated observability pool.
+        resources:
+          requests:
+            memory: 512Mi
+            cpu: 100m
+          limits:
+            memory: 1Gi
+        storageSpec:
+          volumeClaimTemplate:
+            spec:
+              # No storageClassName: uses the cluster default,
+              # ebs-csi-default-sc (000-cluster-wide-resources/storageclass).
+              resources:
+                requests:
+                  storage: 10Gi
+    # Prometheus only for now. The operator, node-exporter and
+    # kube-state-metrics stay: the operator runs Prometheus, the other two
+    # are where node and cluster metrics come from.
+    grafana:
+      enabled: false
+    alertmanager:
+      enabled: false
+    # EKS runs these on the AWS-managed control plane; there is nothing to
+    # scrape, and leaving them on only produces permanent TargetDown alerts.
+    kubeControllerManager:
+      enabled: false
+    kubeScheduler:
+      enabled: false
+    kubeEtcd:
+      enabled: false
