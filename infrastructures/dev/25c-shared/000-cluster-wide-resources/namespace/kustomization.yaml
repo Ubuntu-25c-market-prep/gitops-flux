@@ -12,7 +12,6 @@ resources:
   - teleport.yaml
   - teleport-agent.yaml
   - kyverno.yaml
-  - argocd.yaml
   - cattle-system.yaml
   - platform-logging.yaml
   - platform-scaling.yaml
