@@ -16,6 +16,14 @@ resources:
   - teleport.yaml
   - teleport-agent.yaml
 
+  # New with Argo CD, not adopted. The control plane namespace, and the
+  # business dev environment Argo CD deploys into. Flux owns both namespaces;
+  # gitops-argocd owns only the argoproj.io resources that appear inside them
+  # (ADR 0015). app-dev carries its ResourceQuota and LimitRange in the same
+  # file, because they are one decision.
+  - argocd.yaml
+  - app-dev.yaml
+
   # NEVER add kube-system or flux-system here. Pruning is on, so deleting such
   # a file later would make Flux delete the namespace - for flux-system, Flux
   # itself.

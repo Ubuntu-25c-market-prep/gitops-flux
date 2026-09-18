@@ -1,0 +1,130 @@
+# gitops-flux/infrastructures/dev/dev-eks-us-east-1/000-cluster-wide-resources/namespace/app-dev.yaml
+#
+# The dev environment for business applications.
+#
+# Environments are NAMESPACES in one cluster, not clusters (ADR 0002). The
+# `app-` prefix is not decoration: the `business` AppProject in gitops-argocd
+# restricts Argo CD destinations to `app-*`, so the prefix is what stops a
+# product pull request from deploying into `platform-istio`. Renaming these
+# namespaces silently widens or breaks that boundary.
+#
+# Namespace, quota and limits live in one file per environment because they are
+# one decision. Splitting them across directories means the next person changes
+# the quota and never learns a LimitRange exists.
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: app-dev
+  labels:
+    u25c.io/workstream: argocd
+    u25c.io/owner: argocd
+    u25c.io/environment: dev
+
+    # Opt-in sidecar injection (gitops-flux#26 convention). Pinned to the
+    # istiod revision, not the unrevisioned `istio-injection: enabled` label -
+    # this cluster's istiod has no unrevisioned control plane to inject from.
+    # Every pod created here after this lands gets an istio-proxy sidecar;
+    # already-running pods need a rollout restart to pick one up, since
+    # injection only happens at pod admission.
+    istio.io/rev: 1-30-3
+
+    # Selected by the ingress gateway's AuthorizationPolicy: only namespaces
+    # carrying this label may be reached from the gateway. Without it the
+    # namespace is injected into the mesh but unreachable from outside it.
+    u25c.io/istio-gateway-access: "true"
+
+    # Pod Security Admission, built into Kubernetes and free.
+    #
+    # `baseline` is enforced now because it blocks the things nobody legitimately
+    # needs - privileged containers, host namespaces, hostPath. `restricted` is
+    # only warned on, following platform-security's stated policy lifecycle:
+    # audit, observe for a sprint, fix what it finds, then promote to enforce in
+    # a separate pull request.
+    #
+    # This is not a substitute for Kyverno, which is not installed yet. It is the
+    # part of the same posture that costs nothing to have today.
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: compute
+  namespace: app-dev
+spec:
+  hard:
+    # The arithmetic, for this cluster:
+    #
+    # Capacity. Two t3.medium nodes with `node_max_pods: 110` (prefix
+    # delegation) removes the old 17-pods-per-node ceiling, so pods are no
+    # longer the binding constraint - CPU and memory are. Two t3.medium leave
+    # roughly 3.8 CPU and a little under 5GiB allocatable cluster-wide, once
+    # kubelet and system reservations are taken off, and the platform
+    # namespaces are already drawing on that.
+    #
+    # Per pod. An app pod costs about 100m CPU / 128Mi in requests and
+    # 400m CPU / 256Mi in limits, INCLUDING its Istio sidecar.
+    #
+    # So 10 pods x 100m = 1 CPU and 10 x 128Mi = 1280Mi of requests, which is
+    # the share of allocatable this namespace may actually reserve, and
+    # 10 x 400m = 4 CPU and 10 x 256Mi = 2560Mi of limits. The limits are a
+    # ceiling, not a reservation: limits.cpu deliberately sits above the ~3.8
+    # CPU allocatable, because a namespace is allowed to oversubscribe what it
+    # never simultaneously uses.
+    #
+    # REQUIRED for the per-pod figures to hold: the Deployment must set
+    #   sidecar.istio.io/proxyCPU, sidecar.istio.io/proxyMemory,
+    #   sidecar.istio.io/proxyCPULimit, sidecar.istio.io/proxyMemoryLimit
+    # as pod-template annotations. An injected sidecar otherwise takes Istio's
+    # defaults - 100m/128Mi requests against 2000m/1Gi limits - and a single
+    # such pod eats half this quota's limits.cpu on its own. Pods that omit the
+    # annotations will be rejected at admission once the quota is full, and the
+    # error names the quota rather than the sidecar.
+    pods: "10"
+
+    requests.cpu: "1"
+    requests.memory: 1280Mi
+    limits.cpu: "4"
+    limits.memory: 2560Mi
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: defaults
+  namespace: app-dev
+spec:
+  limits:
+    - type: Container
+
+      # Defaults exist so that a container with no resources block still gets
+      # one. Kyverno will reject workloads without requests and limits, and
+      # LimitRange defaulting happens during admission mutation - before a
+      # validating webhook sees the object - so this makes that rule survivable
+      # rather than a wall.
+      default:
+        cpu: 200m
+        memory: 256Mi
+      defaultRequest:
+        cpu: 50m
+        memory: 64Mi
+
+      # `max` is set to exactly Istio's default sidecar limits (2000m / 1Gi).
+      #
+      # This looks generous for a 2-vCPU node and it is deliberate. This
+      # namespace IS labelled for sidecar injection, so every pod gains an
+      # istio-proxy container carrying those defaults unless the pod template
+      # overrides them. A lower `max` would reject every pod in the namespace
+      # at admission, and the error would point at the injected sidecar rather
+      # than at this file.
+      max:
+        cpu: "2"
+        memory: 1Gi
+      min:
+        cpu: 10m
+        memory: 16Mi
+
+      # No maxLimitRequestRatio on purpose. Istio's sidecar defaults are 100m
+      # request against a 2000m limit - a ratio of 20 - so any sane ratio here
+      # would reject injected pods.
