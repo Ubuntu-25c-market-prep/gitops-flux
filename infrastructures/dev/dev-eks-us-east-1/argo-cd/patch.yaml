@@ -1,0 +1,84 @@
+# Dev sizing for dev-eks-us-east-1, and the removal of the base's SSO config.
+#
+# One replica of everything. This is a two-node cluster and Argo CD's own
+# availability is not what the environment is for - if the control plane is
+# down, git is still the source of truth and nothing has drifted.
+#
+# ---------------------------------------------------------------------------
+# NO SSO ON THIS CLUSTER YET - local admin, no ingress
+# ---------------------------------------------------------------------------
+# Argo CD runs here with the chart's built-in admin account and NO ingress.
+# The password is generated in-cluster into argocd-initial-admin-secret, never
+# enters git, and reaching the UI at all requires cluster access (the bastion
+# tunnel, or a port-forward). That is the whole access model until authentik
+# exists for this cluster.
+#
+# The base sets `configs.cm.oidc.config` for authentik, and that block is
+# removed below rather than adapted. authentik runs on 25c-shared and goes away
+# with it: there is no OIDC provider for THIS cluster, the issuer URL points at
+# a host this cluster's Argo CD cannot use, and `clientSecret` is a
+# `$argocd-authentik-oauth:clientSecret` reference to a Secret that does not
+# exist here. Argo CD does not fail loudly on an unresolvable secret reference
+# in oidc.config - it serves a login button that errors at the callback - so
+# leaving it in would be worse than removing it.
+#
+# WHEN authentik (or another provider) exists for this cluster, that PR must:
+#
+#   1. restore an oidc.config block with THIS cluster's issuer and clientID;
+#   2. add the client secret as a SealedSecret in this directory, labelled
+#      app.kubernetes.io/part-of: argocd, RESEALED with THIS cluster's
+#      sealed-secrets controller certificate. It CANNOT be copied from
+#      25c-shared: a SealedSecret is encrypted to one controller's key pair,
+#      so 25c-shared's ciphertext is undecryptable here and the Secret simply
+#      never materialises;
+#   3. add the ingress/VirtualService and flip `admin.enabled` to false in the
+#      same change - publishing Argo CD while a shared admin password is live
+#      would put it on the internet in front of something that can deploy to
+#      every namespace.
+#
+# Adding that SealedSecret also moves the question of whether this directory
+# still belongs under infrastructures/ - see kustomization.yaml.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: argo-cd
+  namespace: flux-system
+spec:
+  values:
+    configs:
+      cm:
+        # Strategic-merge null: deletes the key the base sets. Not an empty
+        # string - an empty oidc.config is still a configured-but-broken
+        # provider to Argo CD.
+        oidc.config: null
+
+        # The base value is argocd.25c-team1.art, which is 25c-shared's
+        # hostname - and that cluster is being torn down. This field is NOT
+        # cosmetic: Argo CD builds every absolute URL it emits from it, so a
+        # stale hostname sends UI deep links and any webhook or notification
+        # callback at a host that is going away.
+        #
+        # There is no ingress on this cluster yet, so the honest value is the
+        # in-cluster Service. Plain http and port 80 because the base sets
+        # `server.insecure: true`; the Service is argocd-argo-cd-server because
+        # the base sets no releaseName, so Flux derives it from
+        # <targetNamespace>-<name> = argocd-argo-cd (the same default that
+        # produced karpenter-karpenter).
+        #
+        # This becomes the real external hostname in the PR that adds the
+        # ingress/HTTPRoute - the SAME change that adds the OIDC connector and
+        # its resealed SealedSecret and flips admin.enabled to false. Those
+        # four belong together: a reachable Argo CD with a shared admin
+        # password is the thing none of them is safe without.
+        url: http://argocd-argo-cd-server.argocd.svc.cluster.local
+
+    controller:
+      replicas: 1
+    repoServer:
+      replicas: 1
+    server:
+      replicas: 1
+    applicationSet:
+      replicas: 1
+    redis-ha:
+      enabled: false
