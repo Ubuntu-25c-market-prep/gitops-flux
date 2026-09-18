@@ -1,0 +1,27 @@
+# gitops-flux/infrastructures/dev/dev-eks-us-east-1/kiali
+#
+# Unlike aws-load-balancer-controller/cert-manager/external-dns, kiali needs
+# no SealedSecret (no AWS credentials, no IRSA) - it reads Istio config and
+# mesh state via in-cluster RBAC (deployment.cluster_wide_access, the chart
+# default) and queries Prometheus over a plain in-cluster Service URL. No
+# circular-readiness risk, so this lives in the normal auto-walked
+# `infrastructure` Kustomization like kube-prometheus-stack and the
+# StorageClass, not under clusters/.
+#
+# base/kiali also bundles a PodMonitor (monitoring.coreos.com/v1) - that CRD
+# ships with kube-prometheus-stack (#209), already installed and Ready on
+# this cluster before this change, so the CRD-ordering trap that forced
+# cert-manager's/aws-load-balancer-controller's/PrometheusRule's split
+# doesn't apply here: the CRD already exists on the live API server this
+# Kustomization's dry-run validates against.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../../base/kiali
+patches:
+  - path: patch.yaml
+    target:
+      kind: HelmRelease
+labels:
+  - pairs:
+      kustomize.toolkit.fluxcd.io/prune: enabled
