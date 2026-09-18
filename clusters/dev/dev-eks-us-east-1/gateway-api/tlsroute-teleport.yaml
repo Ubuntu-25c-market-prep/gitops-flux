@@ -1,0 +1,52 @@
+# gitops-flux/clusters/dev/dev-eks-us-east-1/gateway-api/tlsroute-teleport.yaml
+#
+# WHY THIS LIVES UNDER clusters/ AND NOT BESIDE THE HelmRelease
+#
+# Same CRD-ordering reason as clusters/dev/25c-shared/kyverno-policies.yaml.
+# TLSRoute's CRD is delivered by the `gateway-api-crds` Kustomization, and
+# infrastructures/dev/dev-eks-us-east-1/ has no committed kustomization.yaml -
+# kustomize-controller auto-generates one by walking every subdirectory, so a
+# TLSRoute dropped next to teleport-cluster/ would join that aggregate build and
+# its server-side dry-run could abort the ENTIRE `infrastructure` apply against
+# a CRD that might not be registered yet.
+#
+# The `gateway-api` Kustomization already dependsOn [gateway-api-crds,
+# infrastructure] with a health check on istiod, so by the time this applies:
+# the CRD exists, the teleport namespace and Service exist, and istiod is Ready.
+#
+# TLSRoute IS GA. v1 in Gateway API v1.5.1, standard channel, already delivered
+# by gateway-api-crds.yaml (path ./config/crd/standard). No experimental channel
+# and no PILOT_ENABLE_ALPHA_GATEWAY_API - both were checked on the cluster.
+apiVersion: gateway.networking.k8s.io/v1
+kind: TLSRoute
+metadata:
+  name: teleport
+  namespace: teleport
+spec:
+  parentRefs:
+    # sectionName pins this to the passthrough listener specifically. Without
+    # it the route attaches to every listener whose hostname overlaps -
+    # including the terminating https listener, where it would silently do
+    # nothing useful.
+    - name: gateway
+      namespace: platform-istio
+      sectionName: teleport-passthrough
+
+    - name: gateway
+      namespace: platform-istio
+      sectionName: teleport-apps
+
+  # Both names on one route: the proxy itself and application access. They
+  # share a backend - the same proxy pods serve app subdomains.
+  hostnames:
+    - "teleport.25c-team1.art"
+    - "*.teleport.25c-team1.art"
+
+  rules:
+    - backendRefs:
+        # The teleport Service is ClusterIP (base/teleport-cluster sets it and
+        # this cluster's overlay no longer overrides it). Port 443 forwards to
+        # the proxy's 3080. No ReferenceGrant is needed: this route and its
+        # backend are both in the teleport namespace.
+        - name: teleport
+          port: 443

@@ -30,71 +30,39 @@ spec:
     kubeClusterName: dev-eks-us-east-1
 
     # ---------------------------------------------------------------------
-    # EXPOSURE: Teleport's own NLB, not the shared Istio gateway
+    # EXPOSURE: TLS passthrough on the SHARED Gateway NLB - no Service of its own
     # ---------------------------------------------------------------------
     #
-    # This replaces `ingress.enabled/useExisting` plus a VirtualService, which
-    # never worked and could not have. The reasoning is worth writing down
-    # because it looks like an ordinary L7 route and is not.
+    # base/teleport-cluster sets `service.type: ClusterIP` and this overlay no
+    # longer overrides it. Traffic arrives through the shared Istio Gateway's
+    # existing NLB, on two TLS passthrough listeners, and reaches these pods via
+    # a TLSRoute:
     #
-    # The chart requires proxyListenerMode: multiplex when ingress is enabled,
-    # so Teleport terminates TLS itself. The shared Gateway also terminates TLS
-    # (mode: SIMPLE). Plaintext arrives at a TLS listener and the hostname
-    # returns 503.
+    #   clusters/dev/dev-eks-us-east-1/gateway-api/gateway.yaml
+    #   clusters/dev/dev-eks-us-east-1/gateway-api/tlsroute-teleport.yaml
     #
-    # PASSTHROUGH on the shared Gateway would fix the handshake, but not the
-    # rest. Teleport's proxy is not an HTTP server: it multiplexes the web UI,
-    # SSH, the Kubernetes API and agent reverse tunnels over one port using
-    # ALPN. An L7 ingress in front of that leaves `tsh` in the degraded mode
-    # Teleport documents, and the reverse tunnel does not work at all.
+    # This REPLACES what gitops-flux#217 landed - a LoadBalancer Service with
+    # AWS Load Balancer Controller annotations and an external-dns hostname,
+    # mirroring 25c-shared. That NLB was never created: the org SCP
+    # `u25c-org-cost-freeze` denies elasticloadbalancing:CreateLoadBalancer,
+    # attached automatically by a budget action when spend breached the ceiling.
     #
-    # That last point is what actually blocked application access. The app
-    # service - whether run from teleport-kube-agent or inside the auth pod -
-    # registers by dialling the proxy's ADVERTISED PUBLIC ADDRESS over a
-    # reverse tunnel. That address is teleport.25c-team1.art. While that name
-    # 503s, no application can register from anywhere. Verified on 7 September
-    # from both an agent (tunnel dial EOF) and from auth.teleportConfig, which
-    # refuses to start at all: "failed to find reverse tunnel address".
+    # Adding listeners to an existing load balancer is not denied, so this is
+    # both ~$17/month cheaper and the only design that can be applied while the
+    # freeze holds.
     #
-    # COST: one additional NLB, roughly $17/month. Named here rather than
-    # buried, because the FinOps ceiling is already a live concern. The
-    # alternative is free and does not deliver working CLI access or
-    # application access, which is most of why Teleport is installed.
-    service:
-      type: LoadBalancer
-
-    # NOT service.annotations. The chart's top-level `service` block accepts
-    # only `type` and `spec`; anything else there is silently dropped, which is
-    # exactly what happened on the first attempt - the NLB came up with no
-    # annotations at all and external-dns had no hostname to act on. Confirmed
-    # against `helm show values`.
-    annotations:
-      service:
-        # NOT "nlb". That is the in-tree cloud provider's value, which is what
-        # 25c-shared uses because it has no AWS Load Balancer Controller. This
-        # cluster does, and the controller does not recognise "nlb" - the Service
-        # would be left unclaimed. Same three annotations the Gateway's own
-        # Service carries (clusters/dev/dev-eks-us-east-1/gateway-api/gateway.yaml).
-        service.beta.kubernetes.io/aws-load-balancer-type: "external"
-        # Pod IPs straight into the target group, no NodePort + kube-proxy hop.
-        service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: "ip"
-        # Explicit: the chart default scheme is "internal", which would leave the
-        # proxy unreachable with nothing in the Service events naming the cause.
-        service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
-
-        # DNS. external-dns runs with sources `service` and `ingress`, so the
-        # name has to be declared on the Service that owns the address.
-        #
-        # BOTH names are required. The apex is the proxy itself; the wildcard
-        # is application access, which publishes each app on its own subdomain
-        # (rancher.teleport.25c-team1.art). A wildcard is exactly one label
-        # deep, so *.25c-team1.art does NOT cover it - the same trap already
-        # documented in base/cert-manager/certificate-wildcard.yaml.
-        #
-        # teleport.25c-team1.art is REMOVED from the shared gateway's
-        # annotation in the same commit. Two Services claiming one record makes
-        # external-dns flap between them.
-        external-dns.alpha.kubernetes.io/hostname: teleport.25c-team1.art,*.teleport.25c-team1.art
+    # WHAT MUST NOT CHANGE HERE
+    #
+    # proxyListenerMode stays `multiplex` (inherited from base). Passthrough
+    # only works because Teleport still terminates its own TLS and multiplexes
+    # web, SSH, the Kubernetes API and reverse tunnels over one port by ALPN.
+    # The proxy's advertised address is still teleport.25c-team1.art:443, which
+    # is what the Gateway's NLB serves - the agent registers by dialling that
+    # advertised address, so it and the exposure have to agree.
+    #
+    # No external-dns hostname annotation belongs on this Service any more.
+    # external-dns publishes the record from the Gateway via its
+    # `gateway-tlsroute` source - see that overlay.
 
     # ---------------------------------------------------------------------
     # CERTIFICATE

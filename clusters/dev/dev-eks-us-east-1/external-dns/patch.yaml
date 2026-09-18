@@ -47,22 +47,16 @@ spec:
     # automatically from this list.
     sources:
       - gateway-httproute
-    # `service` added for EXACTLY ONE Service: Teleport's proxy. It multiplexes
-    # the web UI, SSH, the Kubernetes API and agent reverse tunnels over one
-    # port using ALPN, so it cannot sit behind the Gateway's `mode: Terminate`
-    # HTTPS listener - that is the 503 that cost 25c-shared twelve days - so it
-    # has its own NLB, so it has no HTTPRoute, so gateway-httproute cannot see
-    # it. No convention makes an L4 multiplexer visible to an L7 source.
+    # `gateway-tlsroute` REPLACES the `service` source gitops-flux#217 added.
+    # That PR gave Teleport its own LoadBalancer Service, so external-dns had to
+    # read a hostname annotation off it. Teleport now sits behind the shared
+    # Gateway on TLS passthrough listeners with a TLSRoute, so the name is
+    # published from the Gateway's own status.addresses - exactly like
+    # gateway-httproute, with no hand-maintained hostname list to drift.
     #
-    # Rejected alternative: a TLSRoute on a passthrough listener plus the
-    # gateway-tlsroute source - an experimental-channel CRD dependency and the
-    # same size of change here, for a component that works behind its own
-    # balancer today.
-    #
-    # This reintroduces a hand-maintained list of exactly two names on one
-    # Service, not an open door. A new hostname annotation on any OTHER Service
-    # needs the same argument Teleport just made, in writing, in its PR.
-      - service
+    # The argument #217 made for `service` no longer applies, so the exception
+    # is withdrawn rather than left lying around for the next component to cite.
+      - gateway-tlsroute
 
     # Reconcile interval - the chart default, stated explicitly (matches
     # 25c-shared's own overlay). The zone is small so dev keeps it; a

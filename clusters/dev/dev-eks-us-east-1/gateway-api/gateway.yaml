@@ -163,3 +163,73 @@ spec:
           selector:
             matchLabels:
               u25c.io/istio-gateway-access: "true"
+
+    # ---------------------------------------------------------------------
+    # TELEPORT: TLS PASSTHROUGH, ON THE SAME PORT AND THE SAME NLB
+    # ---------------------------------------------------------------------
+    #
+    # Teleport's proxy is not an HTTP server. It multiplexes the web UI, SSH,
+    # the Kubernetes API and agent reverse tunnels over one port using ALPN.
+    # The https listener above is `mode: Terminate`, so routing Teleport
+    # through an HTTPRoute would hand plaintext to a TLS listener - the 503
+    # that cost 25c-shared twelve days - and even with the handshake fixed it
+    # would leave `tsh` degraded and the reverse tunnel dead, which is what
+    # blocks application access entirely.
+    #
+    # Passthrough solves it: Envoy matches SNI and forwards the bytes without
+    # decrypting, and Teleport terminates its own cert-manager certificate.
+    #
+    # WHY THIS IS TWO LISTENERS AND NOT ONE
+    #
+    # A DNS/SNI wildcard is exactly one label deep, so *.teleport.25c-team1.art
+    # does NOT cover teleport.25c-team1.art. The apex is the proxy itself; the
+    # wildcard is application access, which publishes each app on its own
+    # subdomain (kiali.teleport.25c-team1.art). Same trap already documented in
+    # base/cert-manager/certificate-wildcard.yaml.
+    #
+    # SHARING PORT 443 WITH THE TERMINATING LISTENER - VERIFIED, NOT ASSUMED
+    #
+    # Istio programs both as SNI filter chains on one listener, and exact-match
+    # beats the *.25c-team1.art wildcard above. Proved on this cluster before
+    # this file was written: teleport.25c-team1.art returned Teleport's own
+    # Let's Encrypt certificate while anything.25c-team1.art still returned the
+    # wildcard, and ALPN negotiated `teleport-proxy-ssh` end to end. All four
+    # listeners reported Programmed=True, Conflicted=False.
+    #
+    # COST, WHICH IS WHY THIS DESIGN AND NOT A SECOND NLB
+    #
+    # gitops-flux#217 gave Teleport its own LoadBalancer Service, matching
+    # 25c-shared. That NLB was never created: the org SCP `u25c-org-cost-freeze`
+    # denies elasticloadbalancing:CreateLoadBalancer, attached automatically by
+    # a budget action. Adding listeners to an EXISTING load balancer is not
+    # denied, so this design both saves ~$17/month and is the only one that can
+    # be applied while the freeze holds.
+    - name: teleport-passthrough
+      port: 443
+      protocol: TLS
+      hostname: "teleport.25c-team1.art"
+      tls:
+        # NOT Terminate. Envoy never sees the plaintext; Teleport presents its
+        # own certificate, so no certificateRefs belong here.
+        mode: Passthrough
+      allowedRoutes:
+        namespaces:
+          from: Selector
+          selector:
+            matchLabels:
+              u25c.io/istio-gateway-access: "true"
+
+    - name: teleport-apps
+      port: 443
+      protocol: TLS
+      # Application access. Each app Teleport proxies is published on its own
+      # subdomain of the proxy's name.
+      hostname: "*.teleport.25c-team1.art"
+      tls:
+        mode: Passthrough
+      allowedRoutes:
+        namespaces:
+          from: Selector
+          selector:
+            matchLabels:
+              u25c.io/istio-gateway-access: "true"
