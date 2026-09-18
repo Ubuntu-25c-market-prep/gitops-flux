@@ -1,0 +1,55 @@
+# gitops-flux/infrastructures/dev/dev-eks-us-east-1/opencost/patch.yaml
+#
+# Dev-only: cluster identity and sizing.
+#
+# No node placement override here. 25c-shared pins opencost to a `platform`
+# Karpenter node pool via nodeSelector+toleration on `u25c.io/pool` - this
+# cluster has neither Karpenter nor that label (plain EKS managed node
+# group, 2 nodes, confirmed untainted with
+# `kubectl get nodes -o jsonpath='{.spec.taints}'`). Copying that block here
+# would leave the pod Pending forever with no node to match. Same reasoning
+# applies to every other overlay on this cluster right now (istiod,
+# external-dns, kiali, ...).
+#
+# TODO once Karpenter lands here (watch for infrastructures/dev/
+# dev-eks-us-east-1/karpenter-nodepool/, or `u25c.io/pool` labels showing up
+# in `kubectl get nodes --show-labels`): add back
+#   opencost:
+#     nodeSelector:
+#       u25c.io/pool: platform
+#     tolerations:
+#       - key: u25c.io/pool
+#         value: platform
+#         effect: NoSchedule
+# `platform`, not `observability` - opencost is a stateless singleton with
+# no PVC, `observability` is reserved for pods holding RWO EBS volumes.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: opencost
+  namespace: flux-system
+spec:
+  values:
+    podLabels:
+      environment: dev
+      workstream: finops
+    opencost:
+      exporter:
+        # The base HelmRelease hardcodes `defaultClusterId: u25c-shared` (see
+        # infrastructures/base/opencost/helmrelease.yaml - it is not
+        # templated). Without this override, every cost metric from this
+        # cluster would be mislabeled as belonging to 25c-shared.
+        defaultClusterId: dev-eks-us-east-1
+        resources:
+          requests:
+            cpu: 10m
+            memory: 100Mi
+          limits:
+            memory: 512Mi
+      ui:
+        resources:
+          requests:
+            cpu: 10m
+            memory: 55Mi
+          limits:
+            memory: 128Mi
