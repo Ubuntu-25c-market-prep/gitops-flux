@@ -16,6 +16,10 @@ resources:
   - teleport.yaml
   - teleport-agent.yaml
 
+  # Not yet on the cluster: declared here first, so the logging overlays can
+  # target it. Elasticsearch, Kibana, Fluent Bit and the ILM CronJob live here.
+  - platform-logging.yaml
+
   # NEVER add kube-system or flux-system here. Pruning is on, so deleting such
   # a file later would make Flux delete the namespace - for flux-system, Flux
   # itself.
