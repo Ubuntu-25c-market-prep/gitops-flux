@@ -68,8 +68,11 @@ spec:
     # 400m CPU / 256Mi in limits, INCLUDING its Istio sidecar.
     #
     # So 10 pods x 100m = 1 CPU and 10 x 128Mi = 1280Mi of requests, which is
-    # the share of allocatable this namespace may actually reserve. The limits
-    # are a ceiling, not a reservation, and are allowed to oversubscribe.
+    # the share of allocatable this namespace may actually reserve, and
+    # 10 x 400m = 4 CPU and 10 x 256Mi = 2560Mi of limits. The limits are a
+    # ceiling, not a reservation: limits.cpu deliberately sits above the ~3.8
+    # CPU allocatable, because a namespace is allowed to oversubscribe what it
+    # never simultaneously uses.
     #
     # REQUIRED for the per-pod figures to hold: the Deployment must set
     #   sidecar.istio.io/proxyCPU, sidecar.istio.io/proxyMemory,
@@ -84,7 +87,7 @@ spec:
     requests.cpu: "1"
     requests.memory: 1280Mi
     limits.cpu: "4"
-    limits.memory: 3Gi
+    limits.memory: 2560Mi
 ---
 apiVersion: v1
 kind: LimitRange
