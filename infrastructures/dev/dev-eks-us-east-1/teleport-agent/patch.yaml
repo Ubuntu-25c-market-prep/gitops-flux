@@ -1,0 +1,78 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: teleport-agent
+  namespace: flux-system
+spec:
+  values:
+    # Must match clusterName on the control plane exactly. The agent presents
+    # this when it joins and the auth service rejects a mismatch, which surfaces
+    # as a join failure rather than as anything that names the cause.
+    #
+    # Cluster-specific, so it lives in the overlay rather than base/ - the same
+    # reason clusterName is patched in ../teleport-cluster/patch.yaml.
+    teleportClusterName: teleport.25c-team1.art
+
+    # The applications this agent proxies: EVERY app on this cluster that has a
+    # web UI. Verified component by component - everything else installed here
+    # (cert-manager, external-dns, sealed-secrets, the CNI, the CSI driver,
+    # coredns, kube-proxy, the load balancer controller, istiod) is a controller
+    # with nothing to serve.
+    #
+    # NOT the same three as 25c-shared. rancher, argocd and authentik are not
+    # installed on this cluster. grafana and alertmanager are part of
+    # kube-prometheus-stack but are explicitly disabled here (#209) - listing a
+    # URI for a Service that does not exist registers the app and fails only
+    # when someone clicks the tile.
+    #
+    # Add rancher and argocd to this list in the PRs that install them here,
+    # not speculatively now.
+    #
+    # WHAT TELEPORT DOES FOR THESE, AND WHAT IT DOES NOT
+    #
+    # Teleport proxies the app and authenticates the PERSON. It does not replace
+    # the app's own authentication. On 25c-shared all three apps sat behind
+    # authentik, so Teleport was a second front door to an already authenticated
+    # app. There is no authentik on this cluster, which makes Teleport the ONLY
+    # authentication in front of kiali and opencost - see their notes below.
+    apps:
+      - name: kiali
+        # kiali/patch.yaml on this cluster sets auth.strategy: "anonymous" and
+        # its own comment says: "Revisit before ever routing this through the
+        # Gateway: anonymous + a public route means anyone with the URL gets
+        # full read access to the mesh."
+        #
+        # This is that revisit, and Teleport is what makes the anonymous
+        # strategy safe. The Service stays ClusterIP with no HTTPRoute; the only
+        # way in is a Teleport session with the app-access role and a second
+        # factor. Anonymous inside the cluster, authenticated at the door.
+        #
+        # Port 20001 is kiali-server's own default, not 80. Verify with
+        # `kubectl -n platform-istio get svc kiali`.
+        uri: "http://kiali.platform-istio.svc.cluster.local:20001"
+
+      - name: prometheus
+        # monitoring-kube-prometheus-prometheus, NOT kube-prometheus-stack-
+        # prometheus: the subchart that names this Service is still called
+        # kube-prometheus internally, so the release name does not appear in it
+        # verbatim - the exact trap this cluster's kiali/patch.yaml already
+        # documents hitting. Same Service that file points Kiali at.
+        #
+        # With no Grafana on this cluster, this is the only way to read a metric
+        # without a port-forward.
+        uri: "http://monitoring-kube-prometheus-prometheus.monitoring.svc.cluster.local:9090"
+
+      - name: opencost
+        # base/opencost/helmrelease.yaml sets ui.enabled: true but deliberately
+        # no Ingress and no VirtualService, because "the OpenCost UI has no
+        # authentication, and *.25c-team1.art is public" - so it has been
+        # port-forward-only, with Grafana named as the shared UI. Grafana does
+        # not exist here. Teleport resolves both halves: the UI becomes
+        # reachable, and it is reachable only to an authenticated Teleport user.
+        #
+        # releaseName is `opencost` (base sets it explicitly to avoid the
+        # `monitoring-opencost` double prefix), targetNamespace monitoring. The
+        # chart publishes the exporter and the UI on DIFFERENT ports - 9090 is
+        # the UI. Verify with `kubectl -n monitoring get svc opencost`; picking
+        # the exporter port gives you a tile that renders raw metrics.
+        uri: "http://opencost.monitoring.svc.cluster.local:9090"

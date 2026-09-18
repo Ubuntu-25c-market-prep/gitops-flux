@@ -23,6 +23,12 @@ spec:
     # verify with `tctl status` rather than assuming.
     clusterName: teleport.25c-team1.art
 
+    # base/teleport-cluster/helmrelease.yaml hardcodes `u25c-shared` - the name
+    # `tsh kube ls` shows. Left alone, this cluster would be labelled with the
+    # name of the one being decommissioned, and nothing would error. Matches the
+    # EKS cluster name in terraform-infra-v2.
+    kubeClusterName: dev-eks-us-east-1
+
     # ---------------------------------------------------------------------
     # EXPOSURE: Teleport's own NLB, not the shared Istio gateway
     # ---------------------------------------------------------------------
@@ -64,10 +70,17 @@ spec:
     # against `helm show values`.
     annotations:
       service:
-        # NLB, not the default classic ELB. Same annotation and same reasoning
-        # as the shared gateway's service - no AWS Load Balancer Controller on
-        # this cluster, and the in-tree provider recognises it directly.
-        service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+        # NOT "nlb". That is the in-tree cloud provider's value, which is what
+        # 25c-shared uses because it has no AWS Load Balancer Controller. This
+        # cluster does, and the controller does not recognise "nlb" - the Service
+        # would be left unclaimed. Same three annotations the Gateway's own
+        # Service carries (clusters/dev/dev-eks-us-east-1/gateway-api/gateway.yaml).
+        service.beta.kubernetes.io/aws-load-balancer-type: "external"
+        # Pod IPs straight into the target group, no NodePort + kube-proxy hop.
+        service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: "ip"
+        # Explicit: the chart default scheme is "internal", which would leave the
+        # proxy unreachable with nothing in the Service events naming the cause.
+        service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
 
         # DNS. external-dns runs with sources `service` and `ingress`, so the
         # name has to be declared on the Service that owns the address.

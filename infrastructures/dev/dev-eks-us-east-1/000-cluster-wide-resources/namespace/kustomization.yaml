@@ -10,6 +10,12 @@ resources:
   # New with kube-prometheus-stack, not adopted.
   - monitoring.yaml
 
+  # New with Teleport, not adopted. Both HelmReleases set
+  # install.createNamespace: false so one controller owns the object -
+  # these two files ARE that owner.
+  - teleport.yaml
+  - teleport-agent.yaml
+
   # NEVER add kube-system or flux-system here. Pruning is on, so deleting such
   # a file later would make Flux delete the namespace - for flux-system, Flux
   # itself.
