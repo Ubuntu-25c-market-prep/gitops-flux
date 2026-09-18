@@ -9,8 +9,13 @@ resources:
   - external-dns.yaml
   - monitoring.yaml
   - keda.yaml
-  - teleport.yaml
-  - teleport-agent.yaml
+  # teleport.yaml and teleport-agent.yaml REMOVED: Teleport has moved to
+  # dev-eks-us-east-1 as part of this cluster's decommissioning (#210).
+  # Pruning deletes both namespaces - and the teleport PVC with them, which
+  # is the standalone SQLite backend: users, MFA enrolments, the provision
+  # token, the role and every session recording. Irreversible; the
+  # StorageClass is reclaimPolicy: Delete, so the EBS volume goes too.
+  # Snapshot it first if the audit log is wanted for the record.
   - kyverno.yaml
   - cattle-system.yaml
   - platform-logging.yaml
