@@ -1,0 +1,42 @@
+# gitops-flux/infrastructures/dev/dev-eks-us-east-1/argo-cd
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# DELIBERATELY NO `namespace:` LINE.
+#
+# Setting it here rewrites the HelmRelease's own metadata.namespace from
+# flux-system to argocd, and that is a trap with a two-day precedent in this
+# repository: kube-prometheus-stack's overlay does exactly that, so when
+# gitops-flux#97 added a `valuesFrom` ConfigMap reference, Flux looked for the
+# ConfigMap in `monitoring` while the instructions said `flux-system`. The
+# release sat at Ready=False/ValuesError and monitoring was frozen until someone
+# noticed which namespace the error message was actually naming.
+#
+# keda, karpenter and aws-ebs-csi-driver all leave this out and their
+# HelmReleases stay in flux-system, where `flux get helmrelease` finds them
+# without a -n flag. Argo CD does the same.
+#
+# The objects that genuinely belong in `argocd` declare it themselves.
+# targetNamespace on the HelmRelease is what puts the WORKLOAD there.
+
+# This directory lives under infrastructures/, not clusters/, because it
+# carries NO SealedSecret. external-dns, cert-manager and
+# aws-load-balancer-controller sit under clusters/ precisely because they do:
+# a SealedSecret dropped in here would join the auto-generated aggregate build
+# of infrastructures/dev/dev-eks-us-east-1/ and its server-side dry-run against
+# a CRD that may not be registered yet would abort the ENTIRE `infrastructure`
+# apply. With no Secret to seal, none of that applies and this belongs with the
+# other HelmReleases. The SSO SealedSecret this overlay does not have is
+# discussed in patch.yaml.
+
+resources:
+  - ../../../base/argo-cd
+
+patches:
+  - path: patch.yaml
+    target:
+      kind: HelmRelease
+
+labels:
+  - pairs:
+      kustomize.toolkit.fluxcd.io/prune: enabled
