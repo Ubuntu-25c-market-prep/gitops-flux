@@ -1,0 +1,43 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: kiali
+  namespace: flux-system
+spec:
+  values:
+    external_services:
+      prometheus:
+        # monitoring-kube-prometheus-prometheus - verified against the live
+        # Service (`kubectl -n monitoring get svc`), not assumed: the
+        # kube-prometheus-stack subchart that actually names this Service is
+        # still called kube-prometheus internally, so the release name
+        # "monitoring-kube-prometheus-stack" doesn't appear in it verbatim.
+        # Same verification 25c-shared's own patch.yaml already documents.
+        url: "http://monitoring-kube-prometheus-prometheus.monitoring.svc.cluster.local:9090"
+      grafana:
+        # No Grafana on this cluster (kube-prometheus-stack's overlay here
+        # sets grafana.enabled: false - #209) - unlike 25c-shared, which has
+        # one to point an internal_url at. Explicitly disabled rather than
+        # left at the chart default so Kiali doesn't try to reach a Service
+        # that doesn't exist and surface it as a health-check warning.
+        enabled: false
+    auth:
+      # Not exposed outside the cluster - no HTTPRoute for it yet, only
+      # reachable via `kubectl port-forward`. Same "internal-only for now"
+      # call as 25c-shared's Kiali. Revisit before ever routing this through
+      # the Gateway: anonymous + a public route means anyone with the URL
+      # gets full read access to the mesh.
+      strategy: "anonymous"
+
+    # No u25c.io/pool nodes exist on this cluster yet (see istiod's own
+    # overlay, which omits nodeSelector/tolerations for the same reason) -
+    # unlike 25c-shared's Kiali patch, no deployment.node_selector/
+    # tolerations here. priority_class_name is independent of node
+    # placement, so it still applies.
+    #
+    # Everything for this chart lives under deployment.* in snake_case, and
+    # priority_class_name specifically - NOT a top-level priorityClassName
+    # key, which 25c-shared's own patch.yaml already found and documented
+    # gets silently ignored by kiali-server's values schema.
+    deployment:
+      priority_class_name: system-cluster-critical
