@@ -2,3 +2,11 @@ apiVersion: v1
 kind: Namespace
 metadata:
   name: teleport
+  labels:
+    # The shared Gateway's listeners admit routes by namespace SELECTOR, not
+    # `from: All` (clusters/dev/dev-eks-us-east-1/gateway-api/gateway.yaml) -
+    # the Gateway's owner decides who may attach, per
+    # ops-program/docs/gateway-conventions.md §2. Without this label the
+    # TLSRoute in this namespace is rejected with NotAllowedByListeners, which
+    # reads as "route not working" rather than "label missing".
+    u25c.io/istio-gateway-access: "true"
