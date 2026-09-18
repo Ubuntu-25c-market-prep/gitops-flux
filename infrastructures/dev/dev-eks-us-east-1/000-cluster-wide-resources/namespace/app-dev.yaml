@@ -59,10 +59,11 @@ spec:
     #
     # Capacity. Two t3.medium nodes with `node_max_pods: 110` (prefix
     # delegation) removes the old 17-pods-per-node ceiling, so pods are no
-    # longer the binding constraint - CPU and memory are. Two t3.medium leave
-    # roughly 3.8 CPU and a little under 5GiB allocatable cluster-wide, once
-    # kubelet and system reservations are taken off, and the platform
-    # namespaces are already drawing on that.
+    # longer the binding constraint - CPU and memory are. Measured live on this
+    # cluster, each node reports 1930m CPU and 3371428Ki (~3292Mi) allocatable
+    # once kubelet and system reservations are taken off, so two of them leave
+    # ~3.8 CPU and ~6.4GiB cluster-wide - and the platform namespaces are
+    # already drawing on that.
     #
     # Per pod. An app pod costs about 100m CPU / 128Mi in requests and
     # 400m CPU / 256Mi in limits, INCLUDING its Istio sidecar.
