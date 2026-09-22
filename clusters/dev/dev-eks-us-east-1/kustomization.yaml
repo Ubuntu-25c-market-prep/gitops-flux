@@ -9,6 +9,7 @@ resources:
   - cert-manager.yaml
   - cert-manager-issuers.yaml
   - external-dns.yaml
+  - keda.yaml
   - argo-bootstrap.yaml
 patches:
   - path: patch.yaml
