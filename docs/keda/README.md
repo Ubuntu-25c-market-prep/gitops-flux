@@ -29,12 +29,12 @@ For writing ScaledObjects once KEDA is running, see [../scaledobject-templates](
 | File | What it does |
 | --- | --- |
 | `clusters/dev/dev-eks-us-east-1/keda.yaml` | Tells Flux to deploy the `keda/` folder next to it. `dependsOn: infrastructure` makes Flux wait for the `keda` HelmRepository and the Sealed Secrets controller, which `infrastructure` already installs. |
-| `clusters/dev/dev-eks-us-east-1/keda/helmrelease.yaml` | Installs the KEDA chart. Names KEDA's service account `keda-operator` (the IAM role only trusts this exact name) and reads the role ARN from the `keda-irsa` Secret (`valuesFrom`). |
+| `infrastructures/base/keda/helmrelease.yaml` | Installs the KEDA chart. Shared with `25c-shared`. Names KEDA's service account `keda-operator` (the IAM role only trusts this exact name). |
+| `clusters/dev/dev-eks-us-east-1/keda/kustomization.yaml` | Pulls in the base HelmRelease above, plus the SealedSecret, and applies `patch.yaml`. |
+| `clusters/dev/dev-eks-us-east-1/keda/patch.yaml` | This cluster's changes to base: creates the `keda` namespace, and reads the role ARN from the `keda-irsa` Secret instead of base's hand-made ConfigMap. |
 | `clusters/dev/dev-eks-us-east-1/keda/sealedsecret.yaml` | The encrypted Secret. It's a placeholder until you do Step 2. |
 
 The IAM role itself isn't in this repo. It's created in the `terraform-infra-v2` repo (Step 1).
-
-`infrastructures/base/keda/` is a different KEDA setup used by `25c-shared`. This cluster doesn't use it.
 
 ## Before you start
 

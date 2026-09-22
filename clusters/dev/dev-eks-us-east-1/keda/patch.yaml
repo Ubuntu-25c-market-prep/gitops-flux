@@ -1,0 +1,18 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: keda
+  namespace: flux-system
+spec:
+  # Base expects the keda namespace to exist already (25c-shared creates it in
+  # 000-cluster-wide-resources). This cluster doesn't, so create it here.
+  install:
+    createNamespace: true
+  # Base reads the IRSA role ARN from a ConfigMap created by hand. Here it comes
+  # from the keda-irsa SealedSecret (sealedsecret.yaml), like the other add-ons
+  # on this cluster. This list replaces base's valuesFrom, it doesn't add to it.
+  valuesFrom:
+    - kind: Secret
+      name: keda-irsa
+      valuesKey: values.yaml
+      optional: false
