@@ -1,0 +1,41 @@
+# gitops-flux/infrastructures/dev/dev-eks-us-east-1/kibana/kibana.yaml
+# The Kibana instance - an ECK custom resource, reconciled by the eck-operator
+# in this namespace. Overlay-only, no base/: version and sizing are per-cluster
+# decisions and dev upgrades first, the same reasoning elasticsearch/ uses.
+apiVersion: kibana.k8s.elastic.co/v1
+kind: Kibana
+metadata:
+  name: platform
+  namespace: platform-logging
+spec:
+  # Must not be newer than the Elasticsearch it talks to - Kibana refuses to
+  # start against an older Elasticsearch. Bump this only with elasticsearch.yaml.
+  version: 9.5.2
+  count: 1
+  # The whole connection, in one line. ECK creates a dedicated internal user
+  # for Kibana in Elasticsearch, mounts the CA so TLS verifies, and writes the
+  # URL into Kibana's config. No credentials are configured here or committed.
+  elasticsearchRef:
+    name: platform
+  podTemplate:
+    spec:
+      # No nodeSelector / tolerations: this cluster has no pools yet.
+      priorityClassName: system-cluster-critical
+      containers:
+        - name: kibana
+          env:
+            # Kibana runs on Node.js, which sizes its heap from the cgroup
+            # limit and then overshoots it: on 25c-shared a 1Gi limit was
+            # OOM-killed twelve times ("Ineffective mark-compacts near heap
+            # limit") and had to be raised to 2Gi. This cluster cannot spare
+            # 2Gi, so the heap is capped explicitly instead. 600 MB of heap
+            # leaves ~300Mi for the rest of the process under a 1Gi limit.
+            # Discover works; heavy dashboards will be slower.
+            - name: NODE_OPTIONS
+              value: "--max-old-space-size=600"
+          resources:
+            requests:
+              cpu: 250m
+              memory: 768Mi
+            limits:
+              memory: 1Gi
