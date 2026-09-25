@@ -1,0 +1,40 @@
+# gitops-flux/infrastructures/base/elk-kibana
+#
+# Kibana for the classic-ELK stack, pointed at elk-elasticsearch (this
+# namespace's own Elasticsearch), not at Nikita's ECK-managed "platform"
+# Elasticsearch in platform-logging. Two separate Elastic stacks, two
+# separate Kibanas.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: elk-kibana
+  namespace: flux-system
+spec:
+  chart:
+    spec:
+      chart: kibana
+      version: "8.5.1"
+      sourceRef:
+        kind: HelmRepository
+        name: elastic
+        namespace: flux-system
+  interval: 20h0m0s
+  targetNamespace: logging-elk
+  releaseName: kibana
+  install:
+    createNamespace: false
+    remediation:
+      retries: 3
+    timeout: 10m
+  upgrade:
+    remediation:
+      retries: 3
+      strategy: rollback
+    timeout: 10m
+  values:
+    elasticsearchHosts: "http://elasticsearch-master.logging-elk.svc:9200"
+    replicas: 1
+    # No SSO/ingress wired yet - reachable only via
+    # `kubectl -n logging-elk port-forward svc/kibana-kibana 5601` until an
+    # overlay decides this needs a real hostname behind the shared Gateway
+    # (same as Rancher/Grafana pattern in this repo).

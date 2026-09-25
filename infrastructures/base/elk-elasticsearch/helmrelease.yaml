@@ -1,0 +1,61 @@
+# gitops-flux/infrastructures/base/elk-elasticsearch
+#
+# Plain Helm-chart Elasticsearch (elastic/elasticsearch), deliberately NOT
+# the ECK operator's Elasticsearch CRD that eck-operator/platform-logging use.
+# This is a second, independent Elastic stack for the ELK (Logstash-based)
+# assignment - see infrastructures/base/elk-logstash's own comment for why
+# it exists alongside Nikita's EFK (Fluent Bit) pipeline instead of feeding
+# into it.
+#
+# NOTE ON CHART VERSION: Elastic froze the classic (non-ECK) elasticsearch
+# and kibana charts at 8.5.1 and pushed all newer versions through ECK
+# instead; logstash has no ECK equivalent, so elastic/logstash keeps
+# shipping new versions past 8.5.1. Confirm both before applying - this
+# sandbox can't reach helm.elastic.co to check for you:
+#   helm repo add elastic https://helm.elastic.co
+#   helm search repo elastic/elasticsearch --versions | head
+#   helm search repo elastic/logstash --versions | head
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: elk-elasticsearch
+  namespace: flux-system
+spec:
+  chart:
+    spec:
+      chart: elasticsearch
+      version: "8.5.1"
+      sourceRef:
+        kind: HelmRepository
+        name: elastic
+        namespace: flux-system
+  interval: 20h0m0s
+  targetNamespace: logging-elk
+  # Without this Flux composes "logging-elk-elk-elasticsearch" - same trap
+  # karpenter/cert-manager/external-dns/istiod/eck-operator all hit before.
+  releaseName: elasticsearch
+  install:
+    createNamespace: false
+    remediation:
+      retries: 3
+    timeout: 15m
+  upgrade:
+    remediation:
+      retries: 3
+      strategy: rollback
+    timeout: 15m
+  values:
+    # Single-node dev stack, not a real cluster - overlay may raise this
+    # per environment.
+    replicas: 1
+    minimumMasterNodes: 1
+    clusterName: "elk-dev"
+    esConfig:
+      elasticsearch.yml: |
+        # No production TLS/auth story exists for this stack yet. Fine for a
+        # single dev node behind no public endpoint; revisit before any
+        # environment beyond dev uses this chart.
+        xpack.security.enabled: false
+    # Resources, storage class and node placement are cluster-specific -
+    # left to the overlay, same split every other base chart in this repo
+    # uses (see infrastructures/base/rancher/helmrelease.yaml's own note).
