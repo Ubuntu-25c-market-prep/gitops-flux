@@ -1,0 +1,23 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: eck-operator
+  namespace: flux-system
+spec:
+  values:
+    # Dev sizing: one replica watching one namespace. Requests trimmed below
+    # 25c-shared's 192Mi because this cluster is two t3.medium nodes shared
+    # by every team; the operator idles around 60Mi.
+    resources:
+      requests:
+        cpu: 50m
+        memory: 100Mi
+      limits:
+        memory: 512Mi
+    # No nodeSelector / tolerations: this cluster has no Karpenter pools and
+    # no u25c.io/pool labels. 25c-shared's placement block would leave the
+    # pod Pending forever. Restore it when pools arrive.
+    #
+    # Priority kept: a controller that reconciles Elasticsearch should not be
+    # the first pod off a full node.
+    priorityClassName: system-cluster-critical
