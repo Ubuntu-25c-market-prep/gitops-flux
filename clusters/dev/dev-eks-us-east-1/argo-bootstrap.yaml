@@ -12,10 +12,40 @@
 # created the CRD. Chicken and egg, with every other workstream stopped behind
 # it.
 #
-# dependsOn plus the health check below is the Flux-native answer: this
-# Kustomization does not even attempt its dry-run until `infrastructure` is
-# applied AND the argo-cd HelmRelease reports Ready, by which point the CRDs
-# exist.
+# dependsOn plus the health check below narrows that window but does NOT close
+# it, and this file used to claim otherwise. Observed on the cold install of
+# gitops-flux#220, against this cluster:
+#
+#   argo-bootstrap  False  False  Application/argocd/bootstrap dry-run failed:
+#                   no matches for kind "Application" in version "argoproj.io/v1alpha1"
+#
+# Two reasons, both worth knowing before trusting either field for ordering:
+#
+#   * `dependsOn: infrastructure` waits for that Kustomization to be APPLIED,
+#     not for the workloads inside it to be healthy. `infrastructure` sets no
+#     `spec.wait`, so it reports Ready as soon as the HelmRelease object is on
+#     the API server - while Helm is still installing the chart that registers
+#     the CRDs.
+#   * `healthChecks` are evaluated AFTER this Kustomization's own apply. They
+#     gate when it reports Ready; they cannot gate the server-side dry-run that
+#     fails first.
+#
+# So the first reconcile after a cold install fails, by design of the tools
+# rather than by mistake. What matters is how fast it recovers, and that is
+# what `retryInterval` below is for: without it Flux retries at `interval`,
+# and this Kustomization would sit failed for 20 HOURS after every cluster
+# rebuild until someone ran `flux reconcile kustomization argo-bootstrap` by
+# hand. That is exactly what had to be done on #220.
+#
+# `wait: true` on the `infrastructure` Kustomization would make the dependency
+# real, and is deliberately NOT done here: it would gate every workstream in
+# that path on the health of every component in it, turning one slow or
+# degraded HelmRelease into a cluster-wide stall. A one-minute retry on the one
+# Kustomization that has this ordering problem is the smaller instrument.
+#
+# The health check below is kept. It no longer carries the ordering claim, but
+# it still makes this Kustomization report Ready only once Argo CD actually is,
+# which is what `flux get kustomizations` should mean.
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -29,10 +59,14 @@ spec:
     kind: GitRepository
     name: flux-system
 
-  # Not just "applied" - Ready. A HelmRelease can be applied while the chart is
-  # still installing, and the CRDs land partway through that.
+  # Ordering, as far as it goes - see the header for what this does and does
+  # not guarantee.
   dependsOn:
     - name: infrastructure
+
+  # The cold-install recovery. `interval` is the steady-state cadence; without
+  # an explicit retryInterval Flux reuses it for failures too, which is 20h.
+  retryInterval: 1m0s
 
   healthChecks:
     - apiVersion: helm.toolkit.fluxcd.io/v2
