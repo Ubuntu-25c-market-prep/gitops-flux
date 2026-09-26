@@ -1,0 +1,26 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: elk-elasticsearch
+  namespace: flux-system
+spec:
+  values:
+    # Dev sizing on this cluster's plain 2x t3.medium managed node group -
+    # no Karpenter/u25c.io/pool labels exist here yet (confirmed via
+    # `kubectl get nodes --show-labels`; see infrastructures/dev/
+    # dev-eks-us-east-1/opencost/patch.yaml's own note on this). Once a pool
+    # lands, this is an `observability` candidate (it holds an RWO EBS
+    # volume, same reasoning opencost's comment gives for staying off it).
+    resources:
+      requests:
+        cpu: 500m
+        memory: 1Gi
+      limits:
+        memory: 2Gi
+    # No storageClassName set - PVCs fall through to the cluster's default
+    # (ebs-csi-default-sc, gp3, see 000-cluster-wide-resources/storageclass).
+    volumeClaimTemplate:
+      accessModes: ["ReadWriteOnce"]
+      resources:
+        requests:
+          storage: 10Gi

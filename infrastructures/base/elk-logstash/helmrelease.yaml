@@ -1,0 +1,64 @@
+# gitops-flux/infrastructures/base/elk-logstash
+#
+# Logstash has no ECK-managed equivalent - ECK covers Elasticsearch, Kibana
+# and (via Beats/Agent) shipping, but not Logstash itself. This is the
+# classic-ELK assignment (Elasticsearch + Logstash + Kibana), distinct from
+# Nikita's EFK (Elasticsearch + Fluent Bit + Kibana) pipeline in
+# platform-logging: different shipper, different Elasticsearch, own
+# namespace (logging-elk) - the two stacks do not feed each other.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: elk-logstash
+  namespace: flux-system
+spec:
+  chart:
+    spec:
+      chart: logstash
+      version: "8.5.1"
+      sourceRef:
+        kind: HelmRepository
+        name: elastic
+        namespace: flux-system
+  interval: 20h0m0s
+  targetNamespace: logging-elk
+  releaseName: logstash
+  install:
+    createNamespace: false
+    remediation:
+      retries: 3
+    timeout: 10m
+  upgrade:
+    remediation:
+      retries: 3
+      strategy: rollback
+    timeout: 10m
+  values:
+    replicas: 1
+    # Starter pipeline: accepts JSON-over-TCP on :5000 and writes straight
+    # to elk-elasticsearch, matching this repo's log-schema doc
+    # (ops-program docs/log-schema.md: timestamp/level/message JSON lines).
+    # Point real shippers (Filebeat, an app's own output, etc.) at :5000
+    # once you have something to send - swap the input block, not the
+    # output, when you do.
+    logstashPipeline:
+      logstash.conf: |
+        input {
+          tcp {
+            port => 5000
+            codec => json_lines
+          }
+        }
+        output {
+          elasticsearch {
+            hosts => ["http://elasticsearch-master.logging-elk.svc:9200"]
+            index => "elk-dev-%{+YYYY.MM.dd}"
+          }
+        }
+    service:
+      type: ClusterIP
+      ports:
+        - name: beats
+          port: 5000
+          protocol: TCP
+          targetPort: 5000

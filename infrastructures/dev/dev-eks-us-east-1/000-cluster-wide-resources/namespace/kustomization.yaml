@@ -28,6 +28,11 @@ resources:
   # target it. Elasticsearch, Kibana, Fluent Bit and the ILM CronJob live here.
   - platform-logging.yaml
 
+  # New with the ELK (Elasticsearch + Logstash + Kibana) stack - a separate,
+  # plain-Helm-chart Elastic stack from platform-logging's ECK-managed one, so
+  # it gets its own namespace rather than sharing platform-logging.
+  - logging-elk.yaml
+
   # NEVER add kube-system or flux-system here. Pruning is on, so deleting such
   # a file later would make Flux delete the namespace - for flux-system, Flux
   # itself.
