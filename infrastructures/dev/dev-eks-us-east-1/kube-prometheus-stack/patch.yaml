@@ -12,8 +12,6 @@ spec:
       prometheusSpec:
         thanos: null
         retention: 7d
-        # 2x t3.medium (4 GiB each) is the whole cluster - sized below
-        # 25c-shared's overlay, which had a dedicated observability pool.
         resources:
           requests:
             memory: 512Mi
@@ -28,13 +26,113 @@ spec:
               resources:
                 requests:
                   storage: 10Gi
-    # Prometheus only for now. The operator, node-exporter and
-    # kube-state-metrics stay: the operator runs Prometheus, the other two
-    # are where node and cluster metrics come from.
+
+    # -----------------------------------------------------------------------
+    # GRAFANA - enabled, reached through Teleport, no ingress
+    # -----------------------------------------------------------------------
+    # There is no Ingress and no Service of type LoadBalancer here, deliberately.
+    # Grafana is registered as a Teleport application (see the teleport-agent
+    # overlay) and reached at https://grafana.teleport.25c-team1.art. Teleport
+    # authenticates the user with a local account plus a mandatory second
+    # factor, then forwards a signed JWT. ADR 0016 records why that is the
+    # authentication model on this cluster.
+    #
+    # This is the only auth path currently available: every OIDC alternative
+    # needs a new DNS record, and external-dns has been dead since 19 Sep
+    # (it watches TLSRoute v1alpha2, which Gateway API v1.5.1 stopped serving).
+    # Teleport needs no new record - `*.teleport.25c-team1.art` already exists.
     grafana:
-      enabled: false
+      enabled: true
+
+      # The base sets `envFromSecret: grafana-authentik-oauth`. That
+      # SealedSecret is removed in kustomization.yaml because it was sealed
+      # with 25c-shared's controller key and cannot decrypt here. The envFrom
+      # reference MUST be removed with it - a Deployment referencing a Secret
+      # that does not exist never starts its pods, and the failure shows up as
+      # CreateContainerConfigError rather than anything mentioning authentik.
+      envFromSecret: null
+
+      resources:
+        requests:
+          cpu: 50m
+          memory: 256Mi
+        limits:
+          memory: 512Mi
+
+      grafana.ini:
+        server:
+          # Grafana builds every absolute URL from this - dashboard share
+          # links, the OAuth callback, alert notification links. The base
+          # value is 25c-shared's hostname, which no longer resolves.
+          root_url: https://grafana.teleport.25c-team1.art
+
+        # Strategic-merge null: deletes the authentik block the base sets.
+        # authentik ran on 25c-shared and is gone - no namespace here, no
+        # auth.25c-team1.art record, and its client secret is unsealable.
+        # An unreachable issuer renders a login button that errors at the
+        # callback, which is worse than no button at all.
+        auth.generic_oauth: null
+
+        # Teleport forwards this header on every proxied request, signed with
+        # the cluster's JWT signing key. Grafana validates it against the
+        # public JWKS. No shared secret, nothing to seal, and the key rotates
+        # with Teleport's own CA.
+        auth.jwt:
+          enabled: true
+          header_name: Teleport-Jwt-Assertion
+          username_claim: sub
+          email_claim: sub
+          jwk_set_url: https://teleport.25c-team1.art/.well-known/jwks.json
+          cache_ttl: 60m
+          # A user who reaches Grafana has already passed Teleport's local
+          # login and second factor, so there is nobody to create an account
+          # for who was not already authenticated.
+          auto_sign_up: true
+
+        auth:
+          # Nothing should reach Grafana except through Teleport, so the local
+          # login form is dead weight and an invitation to set a weak password.
+          disable_login_form: true
+          disable_signout_menu: true
+
+        auth.anonymous:
+          enabled: false
+
+        users:
+          # Everyone lands read-only. Promoting someone is a deliberate act in
+          # Grafana, not a side effect of having a Teleport account. Mapping
+          # Teleport roles to Grafana roles needs `role_attribute_path` over a
+          # claim whose shape is not verified yet - see the PR description.
+          auto_assign_org_role: Viewer
+
+    # -----------------------------------------------------------------------
+    # ALERTMANAGER - enabled, also behind Teleport
+    # -----------------------------------------------------------------------
+    # NOTE: this ships the chart's DEFAULT routing, which resolves to a null
+    # receiver. Alerts will fire, group and show in the UI, but they go
+    # NOWHERE. Wiring a real receiver needs a Slack webhook (or SMTP
+    # credentials) as a SealedSecret sealed with THIS cluster's controller
+    # key, and that is a deliberate follow-up rather than a thing to guess at.
+    # Until then this is observable alerting, not delivered alerting - do not
+    # mistake a green Alertmanager for someone being paged.
     alertmanager:
-      enabled: false
+      enabled: true
+      alertmanagerSpec:
+        resources:
+          requests:
+            cpu: 25m
+            memory: 128Mi
+          limits:
+            memory: 256Mi
+        storage:
+          volumeClaimTemplate:
+            spec:
+              accessModes:
+                - ReadWriteOnce
+              resources:
+                requests:
+                  storage: 5Gi
+
     # EKS runs these on the AWS-managed control plane; there is nothing to
     # scrape, and leaving them on only produces permanent TargetDown alerts.
     kubeControllerManager:
