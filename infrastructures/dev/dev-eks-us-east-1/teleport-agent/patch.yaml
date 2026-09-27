@@ -58,17 +58,18 @@ spec:
         # verbatim - the exact trap this cluster's kiali/patch.yaml already
         # documents hitting. Same Service that file points Kiali at.
         #
-        # With no Grafana on this cluster, this is the only way to read a metric
-        # without a port-forward.
+        # Kept now that Grafana exists: Grafana is for dashboards, this is for
+        # ad-hoc PromQL and for checking what Prometheus itself thinks its
+        # targets and rules are doing.
         uri: "http://monitoring-kube-prometheus-prometheus.monitoring.svc.cluster.local:9090"
 
       - name: opencost
         # base/opencost/helmrelease.yaml sets ui.enabled: true but deliberately
         # no Ingress and no VirtualService, because "the OpenCost UI has no
         # authentication, and *.25c-team1.art is public" - so it has been
-        # port-forward-only, with Grafana named as the shared UI. Grafana does
-        # not exist here. Teleport resolves both halves: the UI becomes
-        # reachable, and it is reachable only to an authenticated Teleport user.
+        # port-forward-only, with Grafana named as the shared UI. Teleport
+        # resolves both halves: the UI becomes reachable, and it is reachable
+        # only to an authenticated Teleport user.
         #
         # releaseName is `opencost` (base sets it explicitly to avoid the
         # `monitoring-opencost` double prefix), targetNamespace monitoring. The
@@ -76,3 +77,25 @@ spec:
         # the UI. Verify with `kubectl -n monitoring get svc opencost`; picking
         # the exporter port gives you a tile that renders raw metrics.
         uri: "http://opencost.monitoring.svc.cluster.local:9090"
+
+      # Grafana and Alertmanager have no Ingress and no LoadBalancer Service,
+      # deliberately. Teleport is their only door (ADR 0016), which is also the
+      # only auth path currently open - every OIDC alternative needs a new DNS
+      # record and external-dns has been dead since 19 Sep.
+      - name: grafana
+        # SUBCHART NAMING: Grafana composes its Service name from the FULL
+        # release name, independently of the parent chart, so it carries an
+        # extra `-stack-` that prometheus and alertmanager do not. That reads
+        # like a typo and is not one. Confirm with
+        # `kubectl -n monitoring get svc` before "correcting" it.
+        #
+        # Port 80, not 3000: the chart's Service publishes 80 and targets the
+        # container's 3000.
+        uri: "http://monitoring-kube-prometheus-stack-grafana.monitoring.svc.cluster.local:80"
+
+      - name: alertmanager
+        # Reachable, but note what it will show: this change ships the chart's
+        # DEFAULT routing, which resolves to a null receiver. Alerts group and
+        # display here and are delivered NOWHERE. A real receiver needs a
+        # webhook or SMTP credential sealed with THIS cluster's key.
+        uri: "http://monitoring-kube-prometheus-alertmanager.monitoring.svc.cluster.local:9093"
