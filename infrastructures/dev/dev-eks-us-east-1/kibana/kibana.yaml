@@ -26,16 +26,19 @@ spec:
           env:
             # Kibana runs on Node.js, which sizes its heap from the cgroup
             # limit and then overshoots it: on 25c-shared a 1Gi limit was
-            # OOM-killed twelve times ("Ineffective mark-compacts near heap
-            # limit") and had to be raised to 2Gi. This cluster cannot spare
-            # 2Gi, so the heap is capped explicitly instead. 600 MB of heap
-            # leaves ~300Mi for the rest of the process under a 1Gi limit.
-            # Discover works; heavy dashboards will be slower.
+            # OOM-killed and had to be raised to 2Gi (#188). Here the heap is
+            # capped explicitly instead, so the limit can stay under 2Gi.
+            #
+            # 600 MB was too small: Kibana 9.5 needs ~800 MB of heap just to
+            # finish starting, and crashed 78 times at "heap out of memory"
+            # with the heap at 590 of 600 MB before serving a request.
+            # 1024 MB leaves it room to start and to answer Discover queries;
+            # the limit above it covers the non-heap parts of the process.
             - name: NODE_OPTIONS
-              value: "--max-old-space-size=600"
+              value: "--max-old-space-size=1024"
           resources:
             requests:
               cpu: 250m
-              memory: 768Mi
-            limits:
               memory: 1Gi
+            limits:
+              memory: 1536Mi
