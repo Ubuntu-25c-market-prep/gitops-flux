@@ -111,6 +111,15 @@ spec:
             # literally.
             Rename log.level level
             Rename log.logger logger
+            # aws-load-balancer-controller (kube-system) logs the whole
+            # Gateway object a few times a day under a `gw` key, including
+            # its managedFields, whose keys are literally ".". Elasticsearch
+            # rejects "field name cannot contain only dots", and with
+            # Retry_Limit False the chunk is retried forever (97 retries in
+            # 6h measured 2026-09-28). The source is AWS's controller and
+            # cannot be changed; msg, level and logger carry everything a
+            # person reads. Dropping the embedded object keeps the line.
+            Remove gw
 
       outputs: |
         [OUTPUT]
