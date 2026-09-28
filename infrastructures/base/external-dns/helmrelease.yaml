@@ -8,9 +8,27 @@ spec:
     spec:
       chart: external-dns
       # No leading "v" - the kubernetes-sigs chart versions are plain semver,
-      # unlike cert-manager's, whose chart tags carry one. Chart 1.21.1 ships
-      # external-dns 0.21.0.
-      version: "1.21.1"
+      # unlike cert-manager's, whose chart tags carry one. Chart 1.22.0 ships
+      # external-dns 0.22.0.
+      #
+      # Bumped from 1.21.1 (external-dns 0.21.0): that version's
+      # gateway-tlsroute source hardcodes the OLD v1alpha2 TLSRoute API.
+      # TLSRoute graduated to v1 in Gateway API 1.5.0's standard channel -
+      # this cluster's CRD (clusters/dev/dev-eks-us-east-1/gateway-api-crds.yaml,
+      # v1.5.1) marks v1alpha2 `served: false`, so 0.21.0's v1alpha2 informer
+      # LIST/WATCH never returns and the whole process calls log.Fatal after a
+      # 1m sync timeout - killing gateway-httproute too, since it's the same
+      # process. Exact match for a known upstream bug, fixed upstream:
+      # https://github.com/kubernetes-sigs/external-dns/issues/6520
+      # https://github.com/kubernetes-sigs/external-dns/pull/6367 (merged into 0.22.0)
+      #
+      # 0.22.0 also ships two breaking changes, checked against this config
+      # and both are no-ops here: --policy is now required with no default
+      # (base already sets policy: sync below) and the default annotation
+      # prefix moved to external-dns.kubernetes.io/ with no v0.21.0 fallback
+      # (irrelevant - sources here are gateway-httproute/gateway-tlsroute,
+      # which read Gateway/Route objects directly, not hostname annotations).
+      version: "1.22.0"
       sourceRef:
         kind: HelmRepository
         name: external-dns
