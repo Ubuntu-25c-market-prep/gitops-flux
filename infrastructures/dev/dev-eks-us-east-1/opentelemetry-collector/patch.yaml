@@ -1,0 +1,17 @@
+# gitops-flux/infrastructures/dev/dev-eks-us-east-1/opentelemetry-collector/patch.yaml
+# Nodes here are t3.medium (2 vCPU / 4Gi) and already carry Prometheus,
+# Elasticsearch and the Istio control plane. Bounded so a burst of spans
+# cannot evict anything already running.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: opentelemetry-collector
+  namespace: flux-system
+spec:
+  values:
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        memory: 256Mi
