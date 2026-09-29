@@ -19,7 +19,14 @@ spec:
     name: platform
   podTemplate:
     spec:
-      # No nodeSelector / tolerations: this cluster has no pools yet.
+      # Placement: the logging pool (docs/karpenter/README.md). Kibana holds
+      # no volume, so spot is fine; a move costs one restart.
+      nodeSelector:
+        workload: logging
+      tolerations:
+        - key: dedicated
+          value: logging
+          effect: NoSchedule
       priorityClassName: system-cluster-critical
       containers:
         - name: kibana
