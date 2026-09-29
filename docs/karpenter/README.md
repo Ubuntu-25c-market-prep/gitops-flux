@@ -11,7 +11,7 @@ Nothing moves by itself. A workload changes pool only when its owner adds the li
 | Pool | For | Buys | Label | Taint |
 |---|---|---|---|---|
 | `dev-np-base-spot-us-east-1` | business apps, anything stateless | spot only | `capacity: spot` | none |
-| `dev-np-elk-spot-od-us-east-1` | logging | spot, then on-demand | `workload: elk` | `dedicated=elk:NoSchedule` |
+| `dev-np-logging-spot-od-us-east-1` | logging | spot, then on-demand | `workload: logging` | `dedicated=logging:NoSchedule` |
 | `dev-np-istio-spot-od-us-east-1` | mesh | spot, then on-demand | `workload: istio` | `dedicated=istio:NoSchedule` |
 | `dev-np-monitoring-spot-od-us-east-1` | monitoring | spot, then on-demand | `workload: monitoring` | `dedicated=monitoring:NoSchedule` |
 
@@ -25,7 +25,7 @@ Each pool has a ceiling, so a faulty release cannot buy nodes without end:
 
 | Pool | Ceiling |
 |---|---|
-| elk, istio, monitoring | 2 nodes each |
+| logging, istio, monitoring | 2 nodes each |
 | base | 4 nodes |
 
 Pods beyond the ceiling stay `Pending`. Raise it with a pull request on the pool's file.
@@ -44,14 +44,14 @@ any other pod.
 
 ## Placing a workload
 
-Add both parts to the pod spec. Replace `elk` with `istio` or `monitoring`.
+Add both parts to the pod spec. Replace `logging` with `istio` or `monitoring`.
 
 ```yaml
 nodeSelector:
-  workload: elk
+  workload: logging
 tolerations:
   - key: dedicated
-    value: elk
+    value: logging
     effect: NoSchedule
 ```
 
@@ -67,8 +67,8 @@ Where these lines go depends on the chart:
 
 | Component | Pool | Key in the HelmRelease values, or field in the resource |
 |---|---|---|
-| Elasticsearch, Kibana | elk | `spec.nodeSets[].podTemplate.spec` and `spec.podTemplate.spec` |
-| ECK operator | elk | `nodeSelector`, `tolerations` |
+| Elasticsearch, Kibana | logging | `spec.nodeSets[].podTemplate.spec` and `spec.podTemplate.spec` |
+| ECK operator | logging | `nodeSelector`, `tolerations` |
 | Prometheus | monitoring | `prometheus.prometheusSpec.nodeSelector`, `.tolerations` |
 | Alertmanager | monitoring | `alertmanager.alertmanagerSpec.nodeSelector`, `.tolerations` |
 | Grafana | monitoring | `grafana.nodeSelector`, `grafana.tolerations` |
@@ -122,7 +122,7 @@ another node. Your pod restarts.
   PodDisruptionBudget with `maxUnavailable: 1`.
 - Never use `minAvailable: 1` with one replica. It blocks every move of that node.
 
-elk and monitoring nodes are removed only when empty. base and istio nodes are also
+logging and monitoring nodes are removed only when empty. base and istio nodes are also
 replaced when a cheaper fit exists.
 
 ## Looking at a node
