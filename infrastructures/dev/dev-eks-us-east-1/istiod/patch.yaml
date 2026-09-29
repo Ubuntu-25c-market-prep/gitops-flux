@@ -10,6 +10,12 @@ spec:
     # revision after the fact means reinstalling rather than adding one.
     revision: "1-30-3"
     global:
+      # Istiod is still on the admission path (every injected pod's sidecar
+      # depends on it), so it keeps the same priority class as 25c-shared.
+      # Under global.*: the chart's Deployment reads .Values.global.priorityClassName
+      # and there is no pilot.* or top-level equivalent - the previous
+      # top-level key was silently ignored (live Deployment had none).
+      priorityClassName: system-cluster-critical
       proxy:
         # Chart default limits (cpu: 2000m, memory: 1024Mi) are sized for
         # hundreds of proxies across a large mesh, not this 2x t3.medium
@@ -59,7 +65,3 @@ spec:
     # replicated backends for locality preference to matter. A single
     # istiod replica has nothing to prefer locally. Revisit once app
     # workloads with real cross-AZ replica spread land here.
-
-    # Istiod is still on the admission path (every injected pod's sidecar
-    # depends on it), so it keeps the same priority class as 25c-shared.
-    priorityClassName: system-cluster-critical
