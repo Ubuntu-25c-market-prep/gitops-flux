@@ -15,3 +15,17 @@ resources:
   - argo-bootstrap.yaml
 patches:
   - path: patch.yaml
+  # Flux controllers stay on the on-demand system nodes.
+  - target:
+      kind: Deployment
+      namespace: flux-system
+    patch: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: all
+      spec:
+        template:
+          spec:
+            nodeSelector:
+              workload: system
