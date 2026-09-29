@@ -29,15 +29,20 @@ spec:
       # gets full read access to the mesh.
       strategy: "anonymous"
 
-    # No u25c.io/pool nodes exist on this cluster yet (see istiod's own
-    # overlay, which omits nodeSelector/tolerations for the same reason) -
-    # unlike 25c-shared's Kiali patch, no deployment.node_selector/
-    # tolerations here. priority_class_name is independent of node
-    # placement, so it still applies.
-    #
-    # Everything for this chart lives under deployment.* in snake_case, and
-    # priority_class_name specifically - NOT a top-level priorityClassName
-    # key, which 25c-shared's own patch.yaml already found and documented
-    # gets silently ignored by kiali-server's values schema.
+    # Everything for this chart lives under deployment.* in snake_case -
+    # NOT top-level nodeSelector/tolerations/priorityClassName keys, which
+    # 25c-shared's own patch.yaml already found and documented get silently
+    # ignored by kiali-server's values schema (checked against the 2.30.0
+    # values.yaml: deployment.node_selector, deployment.tolerations).
     deployment:
       priority_class_name: system-cluster-critical
+      # Placement: the istio pool (docs/karpenter/README.md), next to istiod.
+      # Stateless UI, so a spot move costs one restart. Selector AND
+      # toleration are both required: the pool is tainted
+      # dedicated=istio:NoSchedule.
+      node_selector:
+        workload: istio
+      tolerations:
+        - key: dedicated
+          value: istio
+          effect: NoSchedule
