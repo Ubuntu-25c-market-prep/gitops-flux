@@ -15,8 +15,9 @@ Nothing moves by itself. A workload changes pool only when its owner adds the li
 | `dev-np-istio-spot-od-us-east-1` | mesh | spot, then on-demand | `workload: istio` | `dedicated=istio:NoSchedule` |
 | `dev-np-monitoring-spot-od-us-east-1` | monitoring | spot, then on-demand | `workload: monitoring` | `dedicated=monitoring:NoSchedule` |
 
-The system node group is not a pool. It is managed by EKS, runs on-demand, and holds what
-the cluster needs to start: Flux, CoreDNS, Karpenter, Sealed Secrets.
+The system node group is not a pool. It is managed by EKS, runs on-demand, and carries
+the label `workload: system`. Flux, CoreDNS, the EBS CSI controller, Sealed Secrets and
+Karpenter always run there. It has no taint, so other workloads can run there too.
 
 Nodes are amd64, with 2 vCPU and 4 or 8 GiB each. A pool has no nodes until a pod asks
 for it, and usually runs one.
@@ -94,6 +95,19 @@ spec:
 ```
 
 Node agents (DaemonSets) need nothing. They already run on every node.
+
+## Staying on on-demand
+
+A workload that must never run on spot selects the system nodes. There is no taint, so no
+toleration is needed:
+
+```yaml
+nodeSelector:
+  workload: system
+```
+
+Use it sparingly. The system node group does not grow by itself: when it is full, a pod
+with this selector stays `Pending`.
 
 ## Check where it landed
 

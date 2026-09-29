@@ -30,3 +30,6 @@ spec:
         labelSelector:
           matchLabels:
             k8s-app: kube-dns
+
+    nodeSelector:
+      workload: system # stays on-demand
