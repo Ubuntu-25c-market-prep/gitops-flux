@@ -1,0 +1,29 @@
+# Pod-level settings for the Deployment that istiod generates from the
+# Gateway object (gateway.yaml). Referenced by spec.infrastructure.parametersRef
+# there; it must live in the Gateway's namespace.
+#
+# Format (checked against istio 1.30.3,
+# pilot/pkg/config/kube/gatewaycommon/deploymentcontroller.go): each data key
+# names the generated object (deployment, service, serviceAccount,
+# horizontalPodAutoscaler, podDisruptionBudget) and holds a YAML strategic
+# merge patch for it. Any other key is rejected. Name, namespace and owner
+# references must not change.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gateway-options
+  namespace: platform-istio
+data:
+  deployment: |
+    spec:
+      template:
+        spec:
+          # The system node group: on-demand, no taint, so no toleration.
+          # This Gateway carries all public ingress and Teleport on ONE
+          # replica. On a spot node every interruption or consolidation
+          # would take both down until the pod is rescheduled, and the pod
+          # has no selector otherwise, so once the system group shrinks it
+          # could drift to the base spot pool. Keep it here until it runs
+          # two replicas with a PodDisruptionBudget.
+          nodeSelector:
+            workload: system

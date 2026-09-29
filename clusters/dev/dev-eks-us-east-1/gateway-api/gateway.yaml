@@ -46,6 +46,13 @@ spec:
   # metadata.annotations, which still works but isn't part of the portable
   # API surface.
   infrastructure:
+    # Pod-level settings for the generated gateway-istio Deployment
+    # (nodeSelector: workload: system), see gateway-options.yaml. Only
+    # ConfigMap is supported, in this Gateway's own namespace.
+    parametersRef:
+      group: ""
+      kind: ConfigMap
+      name: gateway-options
     annotations:
       # AWS Load Balancer Controller (clusters/dev/dev-eks-us-east-1/
       # aws-load-balancer-controller/), not the legacy in-tree cloud
