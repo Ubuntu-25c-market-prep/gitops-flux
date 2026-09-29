@@ -41,6 +41,7 @@
 # which is exactly what happened on #107.
 /infrastructures/base/karpenter/                             @Ubuntu-25c-market-prep/scaling
 /clusters/dev/dev-eks-us-east-1/karpenter/                   @Ubuntu-25c-market-prep/scaling
+/clusters/dev/dev-eks-us-east-1/karpenter-nodepool/          @Ubuntu-25c-market-prep/scaling
 
 # metrics-server serves the Metrics API that every HPA reads, so it belongs to
 # the workstream that owns HPA. Listed explicitly for the same reason

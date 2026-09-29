@@ -1,0 +1,38 @@
+# Default pool for stateless workloads. Spot only, untainted.
+apiVersion: karpenter.sh/v1
+kind: NodePool
+metadata:
+  name: dev-np-base-spot-us-east-1
+spec:
+  template:
+    metadata:
+      labels:
+        capacity: spot
+    spec:
+      nodeClassRef:
+        group: karpenter.k8s.aws
+        kind: EC2NodeClass
+        name: dev-nc-default-us-east-1
+      expireAfter: 720h
+      terminationGracePeriod: 30m # a stuck drain ends after this
+      requirements:
+        - key: kubernetes.io/arch
+          operator: In
+          values: ["amd64"]
+        - key: kubernetes.io/os
+          operator: In
+          values: ["linux"]
+        - key: karpenter.sh/capacity-type
+          operator: In
+          values: ["spot"]
+        - key: node.kubernetes.io/instance-type
+          operator: In
+          values: [t3a.medium, t3.medium, t3a.large, t3.large, m5.large, m6i.large]
+  disruption:
+    consolidationPolicy: WhenEmptyOrUnderutilized
+    consolidateAfter: 5m
+    budgets:
+      - nodes: "1"
+  limits:
+    cpu: "8"
+    memory: 32Gi

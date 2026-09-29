@@ -1,0 +1,45 @@
+# One node class for all pools: AMI, role, network, disk. Pools differ in the NodePool.
+apiVersion: karpenter.k8s.aws/v1
+kind: EC2NodeClass
+metadata:
+  name: dev-nc-default-us-east-1
+spec:
+  amiSelectorTerms:
+    - alias: al2023@v20260827 # same release as the system node group; a new value replaces the nodes
+  role: dev-karpenter-node-us-east-1
+  subnetSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: dev-eks-us-east-1 # the two public subnets
+  securityGroupSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: dev-eks-us-east-1 # cluster security group
+    - name: dev-eks-us-east-1-node-ssh # SSH from the bastion
+  associatePublicIPAddress: true # no NAT: a node without a public IP has no egress
+  kubelet:
+    maxPods: 110
+    kubeReserved:
+      memory: 450Mi # as the system nodes; Karpenter's default for 110 pods is 1465Mi
+  metadataOptions:
+    httpEndpoint: enabled
+    httpTokens: required
+    httpPutResponseHopLimit: 1
+  blockDeviceMappings:
+    - deviceName: /dev/xvda
+      ebs:
+        volumeSize: 20Gi
+        volumeType: gp3
+        encrypted: true
+        deleteOnTermination: true
+  # Team public key, the same one the system nodes carry (bastion stack).
+  userData: |
+    #!/bin/bash
+    install -d -m 700 -o ec2-user -g ec2-user /home/ec2-user/.ssh
+    echo "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEjJFFAcxWWZ/n58mdK1xEd7iFO2u7X/qOweZdT3bvfO dev-bastion-us-east-1" >> /home/ec2-user/.ssh/authorized_keys
+    chown ec2-user:ec2-user /home/ec2-user/.ssh/authorized_keys
+    chmod 600 /home/ec2-user/.ssh/authorized_keys
+  tags:
+    Org: u25c
+    Env: dev
+    Workstream: scaling
+    ManagedBy: flux
+    Repo: gitops-flux
