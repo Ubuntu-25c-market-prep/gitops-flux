@@ -39,6 +39,20 @@ spec:
       # permanently-degraded object nobody asked for.
       autoscaleEnabled: false
       replicaCount: 1
+      # Placement: the istio pool (docs/karpenter/README.md). Selector AND
+      # toleration are both required: the pool is tainted
+      # dedicated=istio:NoSchedule, and a selector alone leaves the pod
+      # Pending. Under pilot.* like the rest of this block - the chart's
+      # templates/zzy_descope_legacy.yaml copies .pilot to the top level
+      # (verified live: pilot.resources above is what the Deployment runs).
+      # One replica on spot: an interruption costs a restart of the control
+      # plane; running sidecars keep their last config meanwhile.
+      nodeSelector:
+        workload: istio
+      tolerations:
+        - key: dedicated
+          value: istio
+          effect: NoSchedule
 
     # No meshConfig.localityLbSetting here, unlike 25c-shared's istiod
     # patch: that's a cross-AZ cost control for a mesh with enough
@@ -46,13 +60,6 @@ spec:
     # istiod replica has nothing to prefer locally. Revisit once app
     # workloads with real cross-AZ replica spread land here.
 
-    # No nodeSelector/tolerations here, unlike 25c-shared's istiod patch:
-    # this cluster has no `u25c.io/pool` node labels or taints at all (its
-    # managed node group's k8s_labels/k8s_taints are unset in
-    # terraform-infra-v2) - copying that block would leave istiod Pending
-    # forever against a label that exists on no node. Revisit once this
-    # cluster grows dedicated pools (ops-program/docs/node-placement.md).
-    #
     # Istiod is still on the admission path (every injected pod's sidecar
     # depends on it), so it keeps the same priority class as 25c-shared.
     priorityClassName: system-cluster-critical
