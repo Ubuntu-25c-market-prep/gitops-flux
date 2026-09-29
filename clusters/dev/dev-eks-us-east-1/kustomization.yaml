@@ -11,6 +11,7 @@ resources:
   - external-dns.yaml
   - keda.yaml
   - karpenter.yaml
+  - karpenter-nodepool.yaml
   - argo-bootstrap.yaml
 patches:
   - path: patch.yaml

@@ -1,0 +1,22 @@
+# EC2NodeClass and NodePools. Needs the CRDs the karpenter release installs.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: karpenter-nodepool
+  namespace: flux-system
+spec:
+  interval: 10m0s
+  retryInterval: 5m0s
+  path: ./clusters/dev/dev-eks-us-east-1/karpenter-nodepool
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  dependsOn:
+    - name: karpenter
+  healthChecks:
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: karpenter
+      namespace: flux-system
+  timeout: 5m0s

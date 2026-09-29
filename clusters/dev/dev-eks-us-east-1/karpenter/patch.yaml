@@ -29,3 +29,5 @@ spec:
           memory: 1Gi
     podLabels:
       environment: dev
+    serviceMonitor:
+      enabled: true # scraped by kube-prometheus-stack

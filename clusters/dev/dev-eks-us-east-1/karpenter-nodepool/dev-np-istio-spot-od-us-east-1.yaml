@@ -1,0 +1,42 @@
+# Mesh: istiod, gateway, Kiali. Spot first, on-demand fallback.
+apiVersion: karpenter.sh/v1
+kind: NodePool
+metadata:
+  name: dev-np-istio-spot-od-us-east-1
+spec:
+  template:
+    metadata:
+      labels:
+        workload: istio
+    spec:
+      nodeClassRef:
+        group: karpenter.k8s.aws
+        kind: EC2NodeClass
+        name: dev-nc-default-us-east-1
+      taints:
+        - key: dedicated
+          value: istio
+          effect: NoSchedule
+      expireAfter: 720h
+      terminationGracePeriod: 30m # a stuck drain ends after this
+      requirements:
+        - key: kubernetes.io/arch
+          operator: In
+          values: ["amd64"]
+        - key: kubernetes.io/os
+          operator: In
+          values: ["linux"]
+        - key: karpenter.sh/capacity-type
+          operator: In
+          values: ["spot", "on-demand"]
+        - key: node.kubernetes.io/instance-type
+          operator: In
+          values: [t3a.medium, t3.medium, t3a.large, t3.large, m5.large, m6i.large]
+  disruption:
+    consolidationPolicy: WhenEmptyOrUnderutilized
+    consolidateAfter: 15m
+    budgets:
+      - nodes: "1"
+  limits:
+    cpu: "4"
+    memory: 16Gi
