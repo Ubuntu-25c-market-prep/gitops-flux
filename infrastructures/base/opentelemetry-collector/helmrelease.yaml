@@ -1,0 +1,62 @@
+# gitops-flux/infrastructures/base/opentelemetry-collector/helmrelease.yaml
+#
+# Gateway collector: receives OTLP and, for now, only logs what it receives.
+#
+# There is no trace backend on any cluster yet - Prometheus stores no spans and
+# the EFK stack takes logs, not traces. A collector configured to export to a
+# backend that does not exist CrashLoops on startup, so the first deployment
+# proves the receive path and nothing else. The exporter is replaced once a
+# backend lands; the receiver and service wiring do not change when it does.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: opentelemetry-collector
+  namespace: flux-system
+spec:
+  chart:
+    spec:
+      chart: opentelemetry-collector
+      version: "0.173.1"
+      sourceRef:
+        kind: HelmRepository
+        name: open-telemetry
+        namespace: flux-system
+  interval: 20h0m0s
+  targetNamespace: monitoring
+  # Without this Flux names the release "monitoring-opentelemetry-collector"
+  # and every rendered object inherits the doubled prefix.
+  releaseName: opentelemetry-collector
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      retries: 3
+  values:
+    # The chart refuses to render without both of these set explicitly.
+    mode: deployment
+    image:
+      repository: otel/opentelemetry-collector-k8s
+    replicaCount: 1
+    presets:
+      kubernetesAttributes:
+        enabled: true
+    config:
+      receivers:
+        otlp:
+          protocols:
+            grpc:
+              endpoint: 0.0.0.0:4317
+            http:
+              endpoint: 0.0.0.0:4318
+      processors:
+        batch: {}
+      exporters:
+        debug:
+          verbosity: basic
+      service:
+        pipelines:
+          traces:
+            receivers: [otlp]
+            processors: [batch]
+            exporters: [debug]

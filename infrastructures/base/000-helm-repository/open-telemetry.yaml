@@ -1,0 +1,11 @@
+# gitops-flux/infrastructures/base/000-helm-repository/open-telemetry.yaml
+# Source for the opentelemetry-collector chart. The same repo publishes
+# opentelemetry-operator and opentelemetry-demo, so this entry is reusable.
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: open-telemetry
+  namespace: flux-system
+spec:
+  interval: 24h
+  url: https://open-telemetry.github.io/opentelemetry-helm-charts
