@@ -3,7 +3,7 @@ kind: Kustomization
 resources:
   - dev-nc-default-us-east-1.yaml
   - dev-np-base-spot-us-east-1.yaml
-  - dev-np-elk-spot-od-us-east-1.yaml
+  - dev-np-logging-spot-od-us-east-1.yaml
   - dev-np-istio-spot-od-us-east-1.yaml
   - dev-np-monitoring-spot-od-us-east-1.yaml
 labels:
