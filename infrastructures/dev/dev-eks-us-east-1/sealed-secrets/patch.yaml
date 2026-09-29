@@ -16,3 +16,5 @@ spec:
         cpu: 100m
     podLabels:
       environment: dev
+    nodeSelector:
+      workload: system # stays on-demand

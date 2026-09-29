@@ -1,0 +1,10 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: aws-ebs-csi-driver
+  namespace: flux-system
+spec:
+  values:
+    controller:
+      nodeSelector:
+        workload: system # stays on-demand; the node DaemonSet still runs everywhere
