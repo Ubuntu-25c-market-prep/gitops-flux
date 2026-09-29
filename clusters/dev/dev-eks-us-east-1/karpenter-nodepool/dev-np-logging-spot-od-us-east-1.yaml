@@ -2,12 +2,12 @@
 apiVersion: karpenter.sh/v1
 kind: NodePool
 metadata:
-  name: dev-np-elk-spot-od-us-east-1
+  name: dev-np-logging-spot-od-us-east-1
 spec:
   template:
     metadata:
       labels:
-        workload: elk
+        workload: logging
     spec:
       nodeClassRef:
         group: karpenter.k8s.aws
@@ -15,7 +15,7 @@ spec:
         name: dev-nc-default-us-east-1
       taints:
         - key: dedicated
-          value: elk
+          value: logging
           effect: NoSchedule
       expireAfter: 720h
       terminationGracePeriod: 30m # a stuck drain ends after this
