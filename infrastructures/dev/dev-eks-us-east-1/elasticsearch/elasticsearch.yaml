@@ -50,10 +50,18 @@ spec:
                 storage: 10Gi
       podTemplate:
         spec:
-          # No nodeSelector / tolerations: this cluster has no Karpenter pools
-          # and no u25c.io/pool labels yet - only the ng-system managed node
-          # group. 25c-shared's observability-pool block would leave this
-          # pod Pending forever. Restore it when pools arrive.
+          # Placement: the logging pool (docs/karpenter/README.md). It buys spot
+          # first and on-demand as fallback, and consolidates WhenEmpty only,
+          # so a node is never reclaimed out from under the attached volume.
+          # Selector AND toleration are both required: the pool is tainted
+          # dedicated=logging:NoSchedule, and either one alone leaves the pod
+          # Pending or lands it on a system node.
+          nodeSelector:
+            workload: logging
+          tolerations:
+            - key: dedicated
+              value: logging
+              effect: NoSchedule
           #
           # No kubernetes.io/arch pin: the pool is mixed arm64/amd64 and its
           # cheapest instance types are Graviton (t4g/m7g), so this will very
