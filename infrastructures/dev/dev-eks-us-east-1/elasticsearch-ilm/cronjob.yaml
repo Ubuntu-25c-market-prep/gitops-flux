@@ -32,7 +32,14 @@ spec:
         spec:
           restartPolicy: OnFailure
           automountServiceAccountToken: false
-          # No nodeSelector / tolerations: this cluster has no pools yet.
+          # Same pool as Elasticsearch: the image is already pulled there, and
+          # a few seconds of curl an hour should not land on a system node.
+          nodeSelector:
+            workload: logging
+          tolerations:
+            - key: dedicated
+              value: logging
+              effect: NoSchedule
           securityContext:
             runAsNonRoot: true
             runAsUser: 1000
