@@ -69,12 +69,15 @@ spec:
               resources:
                 requests:
                   cpu: 250m
-                  # 1Gi, down from 2Gi. The whole cluster is two t3.medium
-                  # nodes shared by every team, with ~800Mi free on each at
-                  # the time of writing - this still needs a third node.
-                  # 1Gi is the floor: ECK sizes the JVM heap to half the
-                  # limit, and a heap under 512m fails ordinary Kibana
-                  # searches. Ingest is ~100 MB/day; this is enough.
-                  memory: 1Gi
+                  # 1536Mi, up from 1Gi. At 1Gi the container ran at 1023 of
+                  # 1024Mi and was OOM-killed once (2026-09-28 00:31, exit
+                  # 137) with the heap only 192 of 512 MB used: the rest is
+                  # off-heap memory Elasticsearch needs regardless. ECK sets
+                  # the heap to half the limit, so this gives a 768 MB heap
+                  # and ~768Mi outside it. The node is ~50% reserved now
+                  # that Kibana runs elsewhere, so this fits without a new
+                  # node. Ingest is ~100 MB/day; 1Gi was the floor, and it
+                  # turned out to be exactly the floor.
+                  memory: 1536Mi
                 limits:
-                  memory: 1Gi
+                  memory: 1536Mi
