@@ -32,6 +32,9 @@ spec:
         - key: node.kubernetes.io/instance-type
           operator: In
           values: [t3a.medium, t3.medium, t3a.large, t3.large, m5.large, m6i.large]
+        - key: topology.kubernetes.io/zone
+          operator: In
+          values: ["us-east-1b"] # the volume's zone: one node, not one per zone
   disruption:
     consolidationPolicy: WhenEmpty # holds volumes: never moved to save money
     consolidateAfter: 30m
