@@ -22,6 +22,9 @@ Karpenter always run there. It has no taint, so other workloads can run there to
 Nodes are amd64, with 2 vCPU and 4 or 8 GiB each. A pool has no nodes until a pod asks
 for it, and usually runs one.
 
+Two pools buy nodes in one zone only, the zone of their volumes: monitoring in us-east-1a,
+logging in us-east-1b. This keeps each on one node. base and istio use both zones.
+
 Each pool has a ceiling, so a faulty release cannot buy nodes without end:
 
 | Pool | Ceiling |
