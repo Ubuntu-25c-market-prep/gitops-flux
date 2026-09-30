@@ -8,6 +8,31 @@ spec:
   # The prometheus-irsa ConfigMap only feeds Thanos - see kustomization.yaml.
   valuesFrom: null
   values:
+    # -----------------------------------------------------------------------
+    # PLACEMENT - the monitoring pool (docs/karpenter/README.md)
+    # -----------------------------------------------------------------------
+    # Every long-running pod of this release moves to
+    # dev-np-monitoring-spot-od-us-east-1: spot first, on-demand fallback,
+    # tainted dedicated=monitoring:NoSchedule and labelled workload=monitoring.
+    # Selector AND toleration are both required on each workload; a selector
+    # alone leaves the pod Pending. The keys differ per component because
+    # Prometheus and Alertmanager are operator CRs, Grafana and
+    # kube-state-metrics are subcharts, and the operator is this chart's own
+    # Deployment - verified against chart 72.6.2 values and templates.
+    #
+    # Not placed, on purpose:
+    # - prometheus-node-exporter: a DaemonSet with `tolerations: [{operator:
+    #   Exists, effect: NoSchedule}]` by default, so it already runs on every
+    #   node, the pool's included.
+    # - admissionWebhooks.patch: one-shot Jobs at install/upgrade time. They
+    #   run wherever there is room and are gone in seconds.
+    #
+    # Volumes: the three PVCs (Prometheus, Alertmanager, Grafana) are bound in
+    # us-east-1a. Karpenter reads the bound PV's zone affinity and buys the
+    # pool's node there; both public subnets tagged for discovery cover 1a and
+    # 1b. The pool consolidates only WhenEmpty, so a node holding these volumes
+    # is never replaced to save money - only a spot interruption or the 30-day
+    # expiry moves it, and the volumes follow within the zone.
     prometheus:
       prometheusSpec:
         thanos: null
@@ -26,6 +51,28 @@ spec:
               resources:
                 requests:
                   storage: 10Gi
+        nodeSelector:
+          workload: monitoring
+        tolerations:
+          - key: dedicated
+            value: monitoring
+            effect: NoSchedule
+
+    prometheusOperator:
+      nodeSelector:
+        workload: monitoring
+      tolerations:
+        - key: dedicated
+          value: monitoring
+          effect: NoSchedule
+
+    kube-state-metrics:
+      nodeSelector:
+        workload: monitoring
+      tolerations:
+        - key: dedicated
+          value: monitoring
+          effect: NoSchedule
 
     # -----------------------------------------------------------------------
     # GRAFANA - enabled, reached through Teleport, no ingress
@@ -58,6 +105,25 @@ spec:
           memory: 256Mi
         limits:
           memory: 512Mi
+
+      nodeSelector:
+        workload: monitoring
+      tolerations:
+        - key: dedicated
+          value: monitoring
+          effect: NoSchedule
+
+      # One replica on a ReadWriteOnce EBS volume. The subchart default is
+      # RollingUpdate (maxSurge 25% -> 1, maxUnavailable 25% -> 0), which
+      # starts the NEW pod before stopping the old one. Across two nodes that
+      # deadlocks: the new pod waits on a volume still attached to the old
+      # node (Multi-Attach error), and the old pod is never terminated because
+      # the new one never becomes Ready. Recreate stops the old pod first, so
+      # this move - and every future spot interruption - completes on its own.
+      # Prometheus and Alertmanager need nothing: StatefulSets already replace
+      # a pod delete-then-create.
+      deploymentStrategy:
+        type: Recreate
 
       grafana.ini:
         server:
@@ -132,6 +198,12 @@ spec:
               resources:
                 requests:
                   storage: 5Gi
+        nodeSelector:
+          workload: monitoring
+        tolerations:
+          - key: dedicated
+            value: monitoring
+            effect: NoSchedule
 
     # EKS runs these on the AWS-managed control plane; there is nothing to
     # scrape, and leaving them on only produces permanent TargetDown alerts.

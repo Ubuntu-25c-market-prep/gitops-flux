@@ -1,28 +1,16 @@
 # gitops-flux/infrastructures/dev/dev-eks-us-east-1/opencost/patch.yaml
 #
-# Dev-only: cluster identity and sizing.
+# Dev-only: cluster identity, sizing and placement.
 #
-# No node placement override here. 25c-shared pins opencost to a `platform`
-# Karpenter node pool via nodeSelector+toleration on `u25c.io/pool` - this
-# cluster has neither Karpenter nor that label (plain EKS managed node
-# group, 2 nodes, confirmed untainted with
-# `kubectl get nodes -o jsonpath='{.spec.taints}'`). Copying that block here
-# would leave the pod Pending forever with no node to match. Same reasoning
-# applies to every other overlay on this cluster right now (istiod,
-# external-dns, kiali, ...).
-#
-# TODO once Karpenter lands here (watch for infrastructures/dev/
-# dev-eks-us-east-1/karpenter-nodepool/, or `u25c.io/pool` labels showing up
-# in `kubectl get nodes --show-labels`): add back
-#   opencost:
-#     nodeSelector:
-#       u25c.io/pool: platform
-#     tolerations:
-#       - key: u25c.io/pool
-#         value: platform
-#         effect: NoSchedule
-# `platform`, not `observability` - opencost is a stateless singleton with
-# no PVC, `observability` is reserved for pods holding RWO EBS volumes.
+# Placement: the monitoring pool, dev-np-monitoring-spot-od-us-east-1
+# (docs/karpenter/README.md), next to the Prometheus it scrapes. This
+# cluster's pools are keyed on `workload`/`dedicated`, not 25c-shared's
+# `u25c.io/pool` - do not copy that block across. Selector AND toleration
+# are both required: the pool is tainted dedicated=monitoring:NoSchedule and
+# a selector alone leaves the pod Pending. The chart reads these under
+# `opencost.*` (templates/deployment.yaml, verified on 2.5.30); top-level
+# keys are ignored. Stateless singleton with no PVC, so a spot interruption
+# costs one restart and a cost-data gap of the same length.
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -34,6 +22,12 @@ spec:
       environment: dev
       workstream: finops
     opencost:
+      nodeSelector:
+        workload: monitoring
+      tolerations:
+        - key: dedicated
+          value: monitoring
+          effect: NoSchedule
       exporter:
         # The base HelmRelease hardcodes `defaultClusterId: u25c-shared` (see
         # infrastructures/base/opencost/helmrelease.yaml - it is not
