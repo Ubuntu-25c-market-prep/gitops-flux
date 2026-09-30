@@ -170,6 +170,25 @@ spec:
                     "$ES/logs-*/_settings?ignore_unavailable=true&allow_no_indices=true"
                   echo
 
+                  # Kibana's alerting plugin creates two hidden data streams
+                  # whose backing indices ask for 1 replica. One Elasticsearch
+                  # node can never place it, so the cluster sits yellow - and
+                  # that is not cosmetic: ECK refuses to restart the pod for
+                  # any spec change while a declared replica is not started
+                  # (failed_predicates: require_started_replica). On
+                  # 2026-09-29 that jammed the move to the logging pool until
+                  # the pod was deleted by hand.
+                  #
+                  # Both are empty. Re-asserted every hour because Kibana owns
+                  # their templates and a rollover brings the replica back.
+                  # expand_wildcards=all: the indices are hidden.
+                  echo "setting 0 replicas on Kibana alerting indices"
+                  curl -sS -f -X PUT --cacert "$CA" -u "$AUTH" \
+                    -H 'Content-Type: application/json' \
+                    --data-binary '{"index.number_of_replicas":0}' \
+                    "$ES/.ds-.alert-actions-*,.ds-.rule-events-*/_settings?expand_wildcards=all&ignore_unavailable=true&allow_no_indices=true"
+                  echo
+
                   echo "done"
           volumes:
             - name: config
