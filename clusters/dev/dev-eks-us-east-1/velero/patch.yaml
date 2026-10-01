@@ -1,0 +1,63 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: velero
+  namespace: flux-system
+spec:
+  # Nothing on this cluster creates the velero namespace, so create it here.
+  install:
+    createNamespace: true
+  # Base reads the role ARN and bucket from a ConfigMap created by hand. Here
+  # they come from the velero-irsa SealedSecret (velero-irsa-sealed.yaml), like the
+  # other add-ons on this cluster. This list replaces base's valuesFrom, it
+  # doesn't add to it.
+  #
+  # The SealedSecret supplies, in values.yaml:
+  #   serviceAccount.server.annotations  eks.amazonaws.com/role-arn of
+  #                                      dev-irsa-velero-us-east-1
+  #   configuration.backupStorageLocation[0].bucket
+  #                                      dev-s3-us-east-1-velero-<account-id>
+  # Helm replaces lists whole rather than merging them, so the SealedSecret
+  # carries the complete backupStorageLocation entry, not just the bucket.
+  valuesFrom:
+    - kind: Secret
+      name: velero-irsa
+      valuesKey: values.yaml
+      optional: false
+  values:
+    configuration:
+      # Where the disk half of every backup goes: native EBS snapshots, in the
+      # same region as the volumes. A snapshot restores into the same AZ its
+      # volume lived in.
+      volumeSnapshotLocation:
+        - name: default
+          provider: aws
+          config:
+            region: us-east-1
+
+    # Daily backup of the whole cluster. ttl 720h (30 days) must stay below
+    # expiration_days (90) on the velero bucket in terraform-infra-v2
+    # (resources/us-east-1/dev/s3/config.yaml), or S3 deletes backups Velero
+    # still lists.
+    #
+    # Created by the chart rather than as a separate manifest, so it can never
+    # be applied before the Velero CRDs exist.
+    schedules:
+      daily:
+        schedule: "0 3 * * *"
+        useOwnerReferencesInBackup: false
+        template:
+          ttl: "720h"
+          storageLocation: default
+          snapshotVolumes: true
+
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        memory: 512Mi
+    podLabels:
+      environment: dev
+    nodeSelector:
+      workload: system # stays on-demand: a backup shouldn't die with a spot node

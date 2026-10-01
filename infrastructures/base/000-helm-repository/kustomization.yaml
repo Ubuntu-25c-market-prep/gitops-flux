@@ -25,3 +25,4 @@ resources:
   - opencost.yaml
   - coredns.yaml
   - open-telemetry.yaml
+  - vmware-tanzu.yaml
