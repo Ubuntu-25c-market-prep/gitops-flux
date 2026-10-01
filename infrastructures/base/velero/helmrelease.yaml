@@ -1,0 +1,78 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: velero
+  namespace: flux-system
+spec:
+  chart:
+    spec:
+      chart: velero
+      # Chart 12.2.0 ships Velero 1.18.2. The AWS plugin below must move with
+      # it: plugin v1.14.x is the line built for Velero 1.18.x (compatibility
+      # table in the velero-plugin-for-aws README).
+      version: "12.2.0"
+      sourceRef:
+        kind: HelmRepository
+        name: vmware-tanzu
+        namespace: flux-system
+  interval: 20h0m0s
+  targetNamespace: velero
+  # Without this Flux names the release velero-velero, and the chart names the
+  # Deployment after the release.
+  releaseName: velero
+  # The chart ships its CRDs (backups, restores, schedules, ...) in crds/.
+  # Let Flux manage their lifecycle rather than Helm's install-only behaviour.
+  install:
+    crds: Create
+  upgrade:
+    crds: CreateReplace
+  # The IRSA role ARN and the bucket name both carry the AWS account id, and
+  # this repo is public, so neither is committed. Each cluster supplies them
+  # out of band (see docs/velero/README.md). optional: false on purpose:
+  # without them Velero has no bucket and no role - failing the release
+  # outright is the louder, better outcome.
+  valuesFrom:
+    - kind: ConfigMap
+      name: velero-irsa
+      valuesKey: values.yaml
+      optional: false
+  values:
+    # Flux already applies crds/ (install/upgrade above). The chart's own
+    # pre-install hook Job would apply the same CRDs a second time, under a
+    # ClusterRole of its own - one owner is enough.
+    upgradeCRDs: false
+
+    # The plugin that teaches Velero to talk to S3 (object half of a backup)
+    # and EC2 (EBS-snapshot half). Velero loads plugins by having an init
+    # container copy its binary into the shared /target volume.
+    initContainers:
+      - name: velero-plugin-for-aws
+        image: velero/velero-plugin-for-aws:v1.14.4
+        imagePullPolicy: IfNotPresent
+        volumeMounts:
+          - mountPath: /target
+            name: plugins
+
+    # The other half of the IRSA contract: dev-irsa-velero-us-east-1 trusts
+    # system:serviceaccount:velero:velero only, so the name is pinned here
+    # rather than left to the chart's default (<fullname>-server).
+    serviceAccount:
+      server:
+        create: true
+        name: velero
+
+    # IRSA, not a static key: no credentials Secret.
+    credentials:
+      useSecret: false
+
+    # Lets the non-root Velero process read the projected IRSA token.
+    podSecurityContext:
+      fsGroup: 65534
+
+    backupsEnabled: true
+    snapshotsEnabled: true
+
+    # No node-agent: PVCs here are EBS volumes, backed up as native EBS
+    # snapshots by the AWS plugin. File-level (kopia) backup is only needed for
+    # volumes with no snapshot API, like emptyDir or EFS.
+    deployNodeAgent: false

@@ -1,0 +1,15 @@
+# Sealed with the dev-eks-us-east-1 controller's public cert (docs/velero/README.md, step 2).
+# Decrypts to Secret flux-system/velero-irsa: the IRSA role ARN and backup bucket.
+---
+apiVersion: bitnami.com/v1alpha1
+kind: SealedSecret
+metadata:
+  name: velero-irsa
+  namespace: flux-system
+spec:
+  encryptedData:
+    values.yaml: AgBEQwRyDvfMaEGOY+m/uwA4VEZfB3rvNcOmIyap5vnkiqxn6GR4oDY3sAph1MW1iAYGd9HpsO84ixqg2yfEvnKeg70VEJ/rpbfTyQPAmbFdCdYruEMF5XQgP9wt+WRaj8UJ0tD/3Y4vTlyGnNV+KeOwc07/khPTK/LR+rF6AHfpL9EKDWa5YjFcuQIV2AM/i8Tjkdif9FCJ3D2QqLm4gbsxw9nqImvuC0iVbGjJCZ3WBPeH671dlJslC07fmrw0Ug3KRpUtPM/qqP/H6lWpfxav+LsHfOi0mMWFncFP4inBK1BpzjePJYdXEIiy9HpwDqpeZFhLlrxV+KRds4YC4FRjQOlHyltfWs1+ihCw129bzbEUs5v9/3GFiwtTYtW3jZZk0IY/HZiQ3kF0UR2mGlWORUFOkUcHvItOlwL9TOBs9Pbb/HI4cgvBQXAEpNLARnkKcerE61eTTdR0BUirSC7snmDnv0Xcuvvk35Qllq3TqoYuRJdHDmnQNAkf9lUoU+qjaOxjVfDqAryAR/huSDEF6k4jJeP/L3OdsAaA1Ni7+Mt2nh8Jkaj308KrevpMa8cDDQgG9UIM78Bdyzs8eEqHLpN8nsIuFUpNXchgvB9VXJjfCAoWuvP3IDHSU7NYwry0lK2qLJD8STpibPKoY8BiDQCJztK210KUcYGKbAICPdHEQ5Hu2LGprCq3jnatctuSFlCSHtxADaA39yy9iYr94CqR33iV7r2HPlX/o7fqkArMnVmly9s25z397QTXLsecvFLqbpz3CphUSc1tXg6jp6V9QsPDI979Ou8XKlBTBt8U+hnmN/v6Aih0rzZRnxxABu70h3NJD8SIrXIo6HPGyDPNjBeY++A7/PBM9CFwigNLuwo6fjlTmke4f3EbmfDzvmd4XsdSOjITBaHX8SDWbLTwena8xy+XZBaB0JLSTZI4GnbdRQNMTh+ToaUUpJhASmTf04VdJVLIo+t619HnX2fXZrGOLtpM/S5teVmmVfHKAB/ULxXkv0Z9PfcYxuwovPzIhWPtD2YA+N7z0b21N7oKLgQtg6L1Gy0j2f5cLhU+R5DfooA0X5LxCmgk0CkIhUTqvAgvFd08WybcN1WVnf63UaboM1DHgIaG/BRqcIfnY9wE5JkopvCulWuVqlj+VBSiaokZE25SzDhzbcn7cHfWWuY=
+  template:
+    metadata:
+      name: velero-irsa
+      namespace: flux-system

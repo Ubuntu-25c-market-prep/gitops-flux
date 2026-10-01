@@ -10,6 +10,7 @@ resources:
   - cert-manager-issuers.yaml
   - external-dns.yaml
   - keda.yaml
+  - velero.yaml
   - karpenter.yaml
   - karpenter-nodepool.yaml
   - argo-bootstrap.yaml
