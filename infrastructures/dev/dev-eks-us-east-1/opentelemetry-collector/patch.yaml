@@ -28,3 +28,26 @@ spec:
       - key: dedicated
         value: monitoring
         effect: NoSchedule
+
+    # Collector self-metrics (port 8888) into the existing Prometheus. Its
+    # serviceMonitorSelector is empty, so no release label is needed. Kept out
+    # of the base: a cluster without the ServiceMonitor CRD would fail the
+    # Helm install.
+    serviceMonitor:
+      enabled: true
+
+    # Stamp every span with the cluster it came from, so data stays
+    # attributable if a second cluster ever sends here. Cluster-specific, so
+    # it lives in this overlay; the processor list is restated in full
+    # because a patch replaces lists rather than merging them.
+    config:
+      processors:
+        resource/cluster:
+          attributes:
+            - key: k8s.cluster.name
+              value: dev-eks-us-east-1
+              action: upsert
+      service:
+        pipelines:
+          traces:
+            processors: [memory_limiter, k8s_attributes, resource/cluster, batch]
