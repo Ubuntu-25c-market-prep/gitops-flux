@@ -7,6 +7,18 @@
 # backend that does not exist CrashLoops on startup, so the first deployment
 # proves the receive path and nothing else. The exporter is replaced once a
 # backend lands; the receiver and service wiring do not change when it does.
+#
+# THE CHART'S `config:` IS DEEP-MERGED WITH ITS DEFAULTS, NOT REPLACED. Left
+# alone, the chart also runs jaeger, zipkin and prometheus receivers plus logs
+# and metrics pipelines - the prometheus receiver scrapes the collector's own
+# metrics every 10s into `debug`, which was the endless log noise after #232.
+# Setting a key to null is how a default is removed.
+#
+# THOSE NULLS MUST STAY IN THIS BASE FILE. In a Kustomize patch, `null` means
+# "delete this key" - Kustomize drops it, Helm never sees the null, and the
+# chart default comes back with no error anywhere. Verified 2026-10-02:
+# nulls here survive kustomize build and server-side apply; nulls in an
+# overlay patch do not.
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -41,8 +53,25 @@ spec:
     presets:
       kubernetesAttributes:
         enabled: true
+    # Only OTLP is received, so only OTLP is exposed. `metrics` is the
+    # collector's own telemetry on 8888, scraped by a ServiceMonitor where
+    # the cluster has one (see the dev overlay).
+    ports:
+      jaeger-compact:
+        enabled: false
+      jaeger-thrift:
+        enabled: false
+      jaeger-grpc:
+        enabled: false
+      zipkin:
+        enabled: false
+      metrics:
+        enabled: true
     config:
       receivers:
+        jaeger: null
+        zipkin: null
+        prometheus: null
         otlp:
           protocols:
             grpc:
@@ -56,7 +85,11 @@ spec:
           verbosity: basic
       service:
         pipelines:
+          logs: null
+          metrics: null
           traces:
             receivers: [otlp]
-            processors: [batch]
+            # memory_limiter first, batch last. Listing k8s_attributes here
+            # stops the preset prepending it ahead of memory_limiter.
+            processors: [memory_limiter, k8s_attributes, batch]
             exporters: [debug]
