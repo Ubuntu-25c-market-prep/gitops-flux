@@ -41,6 +41,15 @@ spec:
     # it lives in this overlay; the processor list is restated in full
     # because a patch replaces lists rather than merging them.
     config:
+      # Traces to Jaeger in this namespace. Kept in the overlay: the endpoint is
+      # this cluster's Service. `otlp_grpc` is the current name of the OTLP
+      # exporter - `otlp` is deprecated and only auto-rewritten by the chart.
+      # debug stays alongside for now so arrival can be confirmed in the logs.
+      exporters:
+        otlp_grpc/jaeger:
+          endpoint: jaeger.monitoring.svc.cluster.local:4317
+          tls:
+            insecure: true
       processors:
         resource/cluster:
           attributes:
@@ -51,3 +60,4 @@ spec:
         pipelines:
           traces:
             processors: [memory_limiter, k8s_attributes, resource/cluster, batch]
+            exporters: [debug, otlp_grpc/jaeger]

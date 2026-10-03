@@ -1,12 +1,13 @@
 # gitops-flux/infrastructures/base/opentelemetry-collector/helmrelease.yaml
 #
-# Gateway collector: receives OTLP and, for now, only logs what it receives.
+# Gateway collector: receives OTLP. The base exports to `debug` only - where a
+# cluster stores its traces is a per-cluster decision, made in its overlay
+# (dev-eks-us-east-1 sends them to Jaeger).
 #
-# There is no trace backend on any cluster yet - Prometheus stores no spans and
-# the EFK stack takes logs, not traces. A collector configured to export to a
-# backend that does not exist CrashLoops on startup, so the first deployment
-# proves the receive path and nothing else. The exporter is replaced once a
-# backend lands; the receiver and service wiring do not change when it does.
+# Note for anyone reading the history: a collector pointed at a backend that
+# does not exist does NOT crash. The OTLP exporter connects lazily, so the
+# collector starts, then fails and retries every export, filling the logs with
+# errors. #232 said otherwise; that was wrong.
 #
 # THE CHART'S `config:` IS DEEP-MERGED WITH ITS DEFAULTS, NOT REPLACED. Left
 # alone, the chart also runs jaeger, zipkin and prometheus receivers plus logs
