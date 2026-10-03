@@ -1,0 +1,12 @@
+# gitops-flux/infrastructures/base/000-helm-repository/jaegertracing.yaml
+# Source for the jaeger chart (Jaeger v2, the trace store and UI behind the
+# OpenTelemetry collector). 4.x deploys Jaeger v2, which is itself built on
+# the OpenTelemetry collector.
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: jaegertracing
+  namespace: flux-system
+spec:
+  interval: 24h
+  url: https://jaegertracing.github.io/helm-charts

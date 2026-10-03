@@ -1,0 +1,73 @@
+# gitops-flux/infrastructures/base/jaeger/helmrelease.yaml
+#
+# Jaeger v2: stores the traces the opentelemetry-collector sends it and serves
+# the UI to read them. A single all-in-one replica.
+#
+# STORAGE IS SET BY `userconfig`, NOT `storage.type`. Chart 4.x passes a full
+# Jaeger v2 config file to the pod; `storage.type` only drives the optional
+# Elasticsearch maintenance jobs. Its default is still `elasticsearch`
+# pointing at elasticsearch-master:9200 - a host that does not exist here -
+# so the store is declared explicitly below rather than left to defaults.
+#
+# In-memory storage: traces are lost on restart, and the monitoring pool is
+# spot, so an interruption empties it. Acceptable for a first trace store;
+# max_traces bounds the memory it can use.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: jaeger
+  namespace: flux-system
+spec:
+  chart:
+    spec:
+      chart: jaeger
+      version: "4.14.1"
+      sourceRef:
+        kind: HelmRepository
+        name: jaegertracing
+        namespace: flux-system
+  interval: 20h0m0s
+  targetNamespace: monitoring
+  # Without this Flux names the release "monitoring-jaeger".
+  releaseName: jaeger
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      retries: 3
+  values:
+    userconfig:
+      service:
+        extensions: [jaeger_storage, jaeger_query, healthcheckv2]
+        pipelines:
+          traces:
+            receivers: [otlp]
+            processors: [batch]
+            exporters: [jaeger_storage_exporter]
+      extensions:
+        # The chart's liveness and readiness probes hit /status on 13133.
+        healthcheckv2:
+          use_v2: true
+          http:
+            endpoint: 0.0.0.0:13133
+        jaeger_query:
+          storage:
+            traces: memstore
+        jaeger_storage:
+          backends:
+            memstore:
+              memory:
+                max_traces: 20000
+      receivers:
+        otlp:
+          protocols:
+            grpc:
+              endpoint: 0.0.0.0:4317
+            http:
+              endpoint: 0.0.0.0:4318
+      processors:
+        batch: {}
+      exporters:
+        jaeger_storage_exporter:
+          trace_storage: memstore
