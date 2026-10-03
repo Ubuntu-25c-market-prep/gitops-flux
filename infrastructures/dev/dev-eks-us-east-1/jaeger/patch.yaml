@@ -1,0 +1,23 @@
+# gitops-flux/infrastructures/dev/dev-eks-us-east-1/jaeger/patch.yaml
+# Same monitoring pool as the collector and Prometheus. Selector AND
+# toleration both required: the pool is tainted dedicated=monitoring.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: jaeger
+  namespace: flux-system
+spec:
+  values:
+    jaeger:
+      resources:
+        requests:
+          cpu: 50m
+          memory: 256Mi
+        limits:
+          memory: 512Mi
+      nodeSelector:
+        workload: monitoring
+      tolerations:
+        - key: dedicated
+          value: monitoring
+          effect: NoSchedule

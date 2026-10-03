@@ -26,3 +26,4 @@ resources:
   - coredns.yaml
   - open-telemetry.yaml
   - vmware-tanzu.yaml
+  - jaegertracing.yaml
