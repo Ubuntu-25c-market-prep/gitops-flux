@@ -1,0 +1,40 @@
+# gitops-flux/infrastructures/dev/dev-eks-us-east-1/kube-prometheus-stack
+#
+# DELIBERATELY NO `namespace:` LINE - it would rewrite the HelmRelease's own
+# metadata.namespace away from flux-system. targetNamespace on the HelmRelease
+# (set in base) is what places the workload, in `monitoring`.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../../base/kube-prometheus-stack
+patches:
+  - path: patch.yaml
+    target:
+      kind: HelmRelease
+
+  # THE TWO BELOW ARE NOT VALUES - THEY ARE RESOURCES.
+  #
+  # base/kustomization.yaml lists thanos/objstore-secret.yaml and
+  # grafana-authentik-sealed.yaml as resources in their own right. `null` in
+  # patch.yaml removes chart VALUES; it cannot remove an object kustomize was
+  # told to build. Without these two blocks Flux would create a Thanos secret
+  # and an authentik SealedSecret that mean nothing here - and the SealedSecret
+  # could not decrypt anyway, having been sealed with 25c-shared's controller
+  # key rather than this cluster's.
+  - patch: |-
+      $patch: delete
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: thanos-objstore-secret
+        namespace: monitoring
+  - patch: |-
+      $patch: delete
+      apiVersion: bitnami.com/v1alpha1
+      kind: SealedSecret
+      metadata:
+        name: grafana-authentik-oauth
+        namespace: monitoring
+labels:
+  - pairs:
+      kustomize.toolkit.fluxcd.io/prune: enabled
