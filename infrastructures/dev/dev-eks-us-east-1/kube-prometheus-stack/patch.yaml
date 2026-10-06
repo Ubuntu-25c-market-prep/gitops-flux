@@ -1,8 +1,12 @@
 # gitops-flux/infrastructures/dev/dev-eks-us-east-1/kube-prometheus-stack/patch.yaml
 #
-# PHASE 2 of the monitoring rebuild: Prometheus only.
-# Grafana returns in phase 3, Alertmanager in phase 4, alert routing in phase 5
-# (gitops-flux#37's unfinished half) and S3 retention tiering in phase 6 (#35).
+# PHASES 2-4 of the monitoring rebuild: Prometheus, Grafana, Alertmanager.
+# Still to come: alert routing in phase 5 (gitops-flux#37's unfinished half)
+# and S3 retention tiering in phase 6 (#35).
+#
+# The Grafana and Alertmanager blocks below are restored from the overlay this
+# cluster ran before the rebuild (40d5170^), not written fresh - including the
+# Teleport JWT config, which was worked out there and is reproduced as-is.
 #
 # base/ was written for 25c-shared and assumes Thanos, authentik and an IRSA
 # ConfigMap, none of which exist on this cluster. So this overlay SUBTRACTS as
@@ -95,14 +99,138 @@ spec:
     # with no host metrics and nothing red anywhere to show it (3/5 DaemonSet
     # pods after the phase-2 install). The correct value is no value.
 
-    # PHASE 2 IS PROMETHEUS ALONE.
-    # base's two dashboard ConfigMaps still apply (harmless, unread until
-    # Grafana returns); base's two PrometheusRule files load into Prometheus
-    # immediately - that is gitops-flux#37's rules half, working from day one.
+    # -----------------------------------------------------------------------
+    # GRAFANA (#36 dashboards, #38 SSO) - phase 3
+    # -----------------------------------------------------------------------
+    # base's two dashboard ConfigMaps are picked up by the sidecar
+    # (searchNamespace: ALL, set in base), so #36's dashboards arrive with the
+    # pod and need nothing here.
+    #
+    # NOTE ON STATE: unlike Prometheus and Alertmanager, Grafana comes up on a
+    # NEW empty volume. Its PVC is a plain Helm resource and was pruned with
+    # the release at teardown, where theirs are created by the Prometheus
+    # Operator from StatefulSet volumeClaimTemplates and Helm never owned
+    # them. Provisioned dashboards return; anything made by hand in the UI
+    # before the rebuild does not.
     grafana:
-      enabled: false
+      enabled: true
+
+      # base sets `envFromSecret: grafana-authentik-oauth`. That SealedSecret
+      # is removed in kustomization.yaml because it was sealed with
+      # 25c-shared's controller key and cannot decrypt here. The envFrom
+      # reference MUST go with it - a Deployment referencing a Secret that
+      # does not exist never starts its pods, and it fails as
+      # CreateContainerConfigError, which says nothing about authentik.
+      envFromSecret: null
+
+      resources:
+        requests:
+          cpu: 50m
+          memory: 256Mi
+        limits:
+          memory: 512Mi
+
+      nodeSelector:
+        workload: monitoring
+      tolerations:
+        - key: dedicated
+          value: monitoring
+          effect: NoSchedule
+
+      # One replica on a ReadWriteOnce EBS volume. The subchart default is
+      # RollingUpdate (maxSurge 25% -> 1, maxUnavailable 25% -> 0), which
+      # starts the NEW pod before stopping the old one. Across two nodes that
+      # deadlocks: the new pod waits on a volume still attached to the old
+      # node (Multi-Attach error), and the old pod is never terminated because
+      # the new one never becomes Ready. Recreate stops the old pod first, so
+      # this move - and every future spot interruption - completes on its own.
+      # Prometheus and Alertmanager need nothing: StatefulSets already replace
+      # a pod delete-then-create.
+      deploymentStrategy:
+        type: Recreate
+
+      grafana.ini:
+        server:
+          # Grafana builds every absolute URL from this - dashboard share
+          # links, alert notification links. base's value is 25c-shared's
+          # hostname, which no longer resolves. This is the name Teleport
+          # serves the app under (see teleport-agent/patch.yaml).
+          root_url: https://grafana.teleport.25c-team1.art
+
+        # Merge-patch null: deletes the authentik block base sets. authentik
+        # ran on 25c-shared and is gone - no namespace here, no
+        # auth.25c-team1.art record, and its client secret is unsealable. An
+        # unreachable issuer renders a login button that errors at the
+        # callback, which is worse than no button at all.
+        auth.generic_oauth: null
+
+        # Teleport forwards this header on every proxied request, signed with
+        # the cluster's JWT signing key; Grafana validates it against the
+        # public JWKS. No shared secret, nothing to seal, and the key rotates
+        # with Teleport's own CA. This is #38.
+        auth.jwt:
+          enabled: true
+          header_name: Teleport-Jwt-Assertion
+          username_claim: sub
+          email_claim: sub
+          jwk_set_url: https://teleport.25c-team1.art/.well-known/jwks.json
+          cache_ttl: 60m
+          # Anyone who reaches Grafana has already passed Teleport's login and
+          # second factor, so there is nobody to create an account for who was
+          # not already authenticated.
+          auto_sign_up: true
+
+        auth:
+          # Nothing should reach Grafana except through Teleport, so the local
+          # login form is dead weight and an invitation to set a weak password.
+          disable_login_form: true
+          disable_signout_menu: true
+
+        auth.anonymous:
+          enabled: false
+
+        users:
+          # Everyone lands read-only. Promoting someone is a deliberate act in
+          # Grafana, not a side effect of having a Teleport account. Mapping
+          # Teleport roles to Grafana roles needs role_attribute_path over a
+          # claim whose shape is not verified yet - see the PR description.
+          auto_assign_org_role: Viewer
+
+    # -----------------------------------------------------------------------
+    # ALERTMANAGER - phase 4, also behind Teleport
+    # -----------------------------------------------------------------------
+    # THIS SHIPS THE CHART'S DEFAULT ROUTING, WHICH RESOLVES TO A NULL
+    # RECEIVER. base's two PrometheusRule files have been loaded since phase 2,
+    # so alerts fire, group and display in this UI - and are delivered NOWHERE.
+    # A real receiver needs a Slack webhook (or SMTP credentials) sealed with
+    # THIS cluster's controller key: that is phase 5 and the open half of
+    # gitops-flux#37. Until it lands, this is observable alerting, not
+    # delivered alerting - a green Alertmanager does not mean anyone is paged.
     alertmanager:
-      enabled: false
+      enabled: true
+      alertmanagerSpec:
+        resources:
+          requests:
+            cpu: 25m
+            memory: 128Mi
+          limits:
+            memory: 256Mi
+        # 5Gi matches the PVC that survived the teardown (8d old, us-east-1a),
+        # so this re-binds rather than provisioning a second volume.
+        storage:
+          volumeClaimTemplate:
+            spec:
+              accessModes:
+                - ReadWriteOnce
+              resources:
+                requests:
+                  storage: 5Gi
+        nodeSelector:
+          workload: monitoring
+        tolerations:
+          - key: dedicated
+            value: monitoring
+            effect: NoSchedule
 
     # EKS runs these on the managed control plane and exposes nothing to scrape.
     # Left enabled they produce permanent TargetDown alerts for things that are
