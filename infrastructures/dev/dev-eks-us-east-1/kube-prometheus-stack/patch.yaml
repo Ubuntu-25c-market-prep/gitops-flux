@@ -1,0 +1,113 @@
+# gitops-flux/infrastructures/dev/dev-eks-us-east-1/kube-prometheus-stack/patch.yaml
+#
+# PHASE 2 of the monitoring rebuild: Prometheus only.
+# Grafana returns in phase 3, Alertmanager in phase 4, alert routing in phase 5
+# (gitops-flux#37's unfinished half) and S3 retention tiering in phase 6 (#35).
+#
+# base/ was written for 25c-shared and assumes Thanos, authentik and an IRSA
+# ConfigMap, none of which exist on this cluster. So this overlay SUBTRACTS as
+# much as it adds - see the `null`s below, and the $patch: delete blocks in
+# kustomization.yaml for the two resources that are not values.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: kube-prometheus-stack
+  namespace: flux-system
+spec:
+  # base reads a `prometheus-irsa` ConfigMap that only exists on 25c-shared.
+  # A HelmRelease is a CRD, so this is a JSON merge patch: null REMOVES the
+  # key rather than setting it empty. Leave it and the release blocks forever
+  # waiting for a ConfigMap nothing creates.
+  valuesFrom: null
+
+  values:
+    prometheus:
+      prometheusSpec:
+        # No object storage on this cluster yet. Removing the block also removes
+        # the Thanos sidecar, which would crash-loop without credentials.
+        # Returns in phase 6 with the S3 bucket and IRSA role (#35).
+        thanos: null
+
+        # base says 15d. 10Gi does not hold 15 days of this cluster's series and
+        # Prometheus does not warn - it silently drops the oldest blocks. 7d is
+        # honest about the storage. Raise it with the volume, not alone.
+        retention: 7d
+
+        resources:
+          requests:
+            cpu: 100m
+            memory: 512Mi
+          limits:
+            # Memory only. A CPU limit throttles the scrape loop for no benefit;
+            # memory is not compressible so it gets a real ceiling.
+            memory: 1Gi
+
+        # SAME SIZE AND SHAPE AS BEFORE THE TEARDOWN, deliberately. The
+        # Prometheus Operator derives the PVC name from the StatefulSet, so with
+        # release name `monitoring` and 10Gi this re-binds the existing volume
+        # and the previous days of metrics come back. Change either and you get
+        # a new empty volume while the old one bills quietly in the background.
+        storageSpec:
+          volumeClaimTemplate:
+            spec:
+              resources:
+                requests:
+                  storage: 10Gi
+
+        # The monitoring Karpenter pool (#244). Without BOTH of these the pod
+        # either lands on a general node or sits Pending against a taint - and
+        # Pending reads as "broken" long before anyone checks the taint.
+        nodeSelector:
+          workload: monitoring
+        tolerations:
+          - key: dedicated
+            value: monitoring
+            effect: NoSchedule
+
+    prometheusOperator:
+      nodeSelector:
+        workload: monitoring
+      tolerations:
+        - key: dedicated
+          value: monitoring
+          effect: NoSchedule
+
+    # Hyphenated: this is the SUBCHART's name, not a camelCase chart value.
+    # `kubeStateMetrics` is the on/off toggle; `kube-state-metrics` is where the
+    # subchart's own values go. Placement under the wrong one is accepted
+    # silently and does nothing.
+    kube-state-metrics:
+      nodeSelector:
+        workload: monitoring
+      tolerations:
+        - key: dedicated
+          value: monitoring
+          effect: NoSchedule
+
+    # node-exporter is a DaemonSet - it must run on EVERY node, so no
+    # nodeSelector. It does need the toleration, or the monitoring nodes become
+    # the ones you cannot see.
+    prometheus-node-exporter:
+      tolerations:
+        - key: dedicated
+          value: monitoring
+          effect: NoSchedule
+
+    # PHASE 2 IS PROMETHEUS ALONE.
+    # base's two dashboard ConfigMaps still apply (harmless, unread until
+    # Grafana returns); base's two PrometheusRule files load into Prometheus
+    # immediately - that is gitops-flux#37's rules half, working from day one.
+    grafana:
+      enabled: false
+    alertmanager:
+      enabled: false
+
+    # EKS runs these on the managed control plane and exposes nothing to scrape.
+    # Left enabled they produce permanent TargetDown alerts for things that are
+    # not broken - which is how an alerting stack teaches people to ignore it.
+    kubeControllerManager:
+      enabled: false
+    kubeScheduler:
+      enabled: false
+    kubeEtcd:
+      enabled: false
