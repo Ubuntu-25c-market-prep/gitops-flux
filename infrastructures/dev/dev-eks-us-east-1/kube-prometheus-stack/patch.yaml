@@ -84,14 +84,16 @@ spec:
           value: monitoring
           effect: NoSchedule
 
-    # node-exporter is a DaemonSet - it must run on EVERY node, so no
-    # nodeSelector. It does need the toleration, or the monitoring nodes become
-    # the ones you cannot see.
-    prometheus-node-exporter:
-      tolerations:
-        - key: dedicated
-          value: monitoring
-          effect: NoSchedule
+    # NO prometheus-node-exporter BLOCK, DELIBERATELY.
+    #
+    # It is a DaemonSet that must cover every node, and the subchart already
+    # defaults to `tolerations: [{operator: Exists, effect: NoSchedule}]` - a
+    # blanket toleration matching every taint in the cluster. Helm OVERWRITES
+    # lists rather than merging them, so naming any toleration here replaces
+    # that blanket with only what is named: a narrow `dedicated=monitoring`
+    # entry silently dropped the logging and istio pools, leaving two nodes
+    # with no host metrics and nothing red anywhere to show it (3/5 DaemonSet
+    # pods after the phase-2 install). The correct value is no value.
 
     # PHASE 2 IS PROMETHEUS ALONE.
     # base's two dashboard ConfigMaps still apply (harmless, unread until
