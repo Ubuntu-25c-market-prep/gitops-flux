@@ -5,39 +5,55 @@
 # down, git is still the source of truth and nothing has drifted.
 #
 # ---------------------------------------------------------------------------
-# NO SSO ON THIS CLUSTER YET - local admin, no ingress
+# REACHED THROUGH TELEPORT - still no SSO, and that distinction matters
 # ---------------------------------------------------------------------------
-# Argo CD runs here with the chart's built-in admin account and NO ingress.
-# The password is generated in-cluster into argocd-initial-admin-secret, never
-# enters git, and reaching the UI at all requires cluster access (the bastion
-# tunnel, or a port-forward). That is the whole access model until authentik
-# exists for this cluster.
+# Argo CD is registered as a Teleport application (teleport-agent overlay) and
+# reached at https://argocd.teleport.25c-team1.art. There is still NO Ingress
+# and no LoadBalancer Service: Teleport is the only route in, it enforces a
+# local account plus a mandatory second factor, and every session is audited.
+# ADR 0016 records why Teleport is the access model on this cluster.
 #
-# The base sets `configs.cm.oidc.config` for authentik, and that block is
-# removed below rather than adapted. authentik runs on 25c-shared and goes away
-# with it: there is no OIDC provider for THIS cluster, the issuer URL points at
-# a host this cluster's Argo CD cannot use, and `clientSecret` is a
-# `$argocd-authentik-oauth:clientSecret` reference to a Secret that does not
-# exist here. Argo CD does not fail loudly on an unresolvable secret reference
-# in oidc.config - it serves a login button that errors at the callback - so
-# leaving it in would be worse than removing it.
+# WHAT THIS DOES NOT DO: it is not single sign-on.
 #
-# WHEN authentik (or another provider) exists for this cluster, that PR must:
+# Grafana sits behind the same door AND consumes the JWT Teleport forwards
+# (`auth.jwt`), so one login covers both. Argo CD has no equivalent - its only
+# authentication paths are local accounts and OIDC/Dex, and neither reads a
+# proxy-supplied header. So Argo CD still presents its own login form and
+# `admin.enabled` stays TRUE. You authenticate twice: once to Teleport, once
+# to Argo CD.
 #
-#   1. restore an oidc.config block with THIS cluster's issuer and clientID;
-#   2. add the client secret as a SealedSecret in this directory, labelled
-#      app.kubernetes.io/part-of: argocd, RESEALED with THIS cluster's
-#      sealed-secrets controller certificate. It CANNOT be copied from
-#      25c-shared: a SealedSecret is encrypted to one controller's key pair,
-#      so 25c-shared's ciphertext is undecryptable here and the Secret simply
-#      never materialises;
-#   3. add the ingress/VirtualService and flip `admin.enabled` to false in the
-#      same change - publishing Argo CD while a shared admin password is live
-#      would put it on the internet in front of something that can deploy to
-#      every namespace.
+# That is a real improvement over what it replaced - the UI was previously
+# reachable only by `kubectl port-forward`, so it was effectively unusable by
+# the team - but do not read "behind Teleport" as "SSO is done".
 #
-# Adding that SealedSecret also moves the question of whether this directory
-# still belongs under infrastructures/ - see kustomization.yaml.
+# The password is still generated in-cluster into argocd-initial-admin-secret
+# and never enters git. What changed is that reaching the login form now
+# requires passing Teleport first, rather than holding cluster credentials.
+#
+# ---------------------------------------------------------------------------
+# CLOSING THE SSO GAP - two routes, neither taken here
+# ---------------------------------------------------------------------------
+# 1. A real identity provider. The base's `oidc.config` block is written and
+#    waiting; authentik ran on 25c-shared and is gone (no namespace here, no
+#    auth.25c-team1.art record, and its SealedSecret is encrypted to that
+#    cluster's controller key, so it cannot be copied). Restoring it means a
+#    new deployment, roughly 1280Mi of requests and an 8Gi volume, plus a DNS
+#    record. When it exists, ONE PR restores oidc.config with this cluster's
+#    issuer, adds the client secret RESEALED with this cluster's certificate,
+#    and flips `admin.enabled` to false.
+#
+# 2. Dex's `authproxy` connector, trusting a header Teleport rewrites. The
+#    chart bundles Dex (`dex.enabled` is false today) and Teleport can inject
+#    headers into proxied requests, so this could give real SSO with no new
+#    infrastructure. It is NOT done here because a header-trust connector is
+#    only safe while nothing can reach the Service except the proxy, and that
+#    property deserves to be asserted and tested deliberately rather than
+#    assumed - not bundled into a change about reachability.
+#
+# Either route also wants the RBAC in base to become live: `policy.csv`
+# already names groups (cto, pm, devops) and is inert until a connector
+# supplies them.
+#
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -70,7 +86,7 @@ spec:
         # its resealed SealedSecret and flips admin.enabled to false. Those
         # four belong together: a reachable Argo CD with a shared admin
         # password is the thing none of them is safe without.
-        url: http://argocd-argo-cd-server.argocd.svc.cluster.local
+        url: https://argocd.teleport.25c-team1.art
 
     controller:
       replicas: 1
