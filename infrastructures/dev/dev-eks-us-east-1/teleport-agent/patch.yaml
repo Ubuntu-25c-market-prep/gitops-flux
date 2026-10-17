@@ -93,6 +93,22 @@ spec:
         # container's 3000.
         uri: "http://monitoring-kube-prometheus-stack-grafana.monitoring.svc.cluster.local:80"
 
+      - name: argocd
+        # Argo CD's own Service, not an ingress - there is none (see the
+        # argo-cd overlay). `server.insecure: true` in base/argo-cd means the
+        # server speaks plain HTTP and expects something in front to terminate
+        # TLS; Teleport is that something.
+        #
+        # Port 80: the Service publishes both 80 and 443, but 443 would mean
+        # Teleport talking TLS to a server running in insecure mode.
+        #
+        # NOTE: unlike Grafana, Argo CD does NOT consume the forwarded JWT.
+        # It has no header-trust mode, so it still presents its own login and
+        # `admin.enabled` stays true. Teleport is an access boundary here, not
+        # a single sign-on - see the argo-cd overlay for what closing that gap
+        # would take.
+        uri: "http://argocd-argo-cd-server.argocd.svc.cluster.local:80"
+
       - name: alertmanager
         # Reachable, but note what it will show: this change ships the chart's
         # DEFAULT routing, which resolves to a null receiver. Alerts group and
