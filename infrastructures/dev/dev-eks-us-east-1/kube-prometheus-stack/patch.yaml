@@ -37,14 +37,26 @@ spec:
         # honest about the storage. Raise it with the volume, not alone.
         retention: 7d
 
+        # Raised 17 Oct 2026. The original sizing was set when this was a
+        # TWO-node cluster running little besides Prometheus. It is now six
+        # nodes carrying Istio, the full ELK stack, OpenTelemetry, Jaeger,
+        # Teleport and Argo CD, and Prometheus holds ~204k active series.
+        #
+        # PrometheusHighMemory (>80% of limit) fired continuously from 8 Oct
+        # and NOBODY SAW IT, because Alertmanager still routes to a null
+        # receiver. At roughly 3-4KB per series the head block alone was at
+        # the 1Gi ceiling, so this was heading for an OOMKill.
+        #
+        # Raise this WITH the series count, not after an OOM. The monitoring
+        # Karpenter pool exists for exactly this headroom.
         resources:
           requests:
             cpu: 100m
-            memory: 512Mi
+            memory: 768Mi
           limits:
             # Memory only. A CPU limit throttles the scrape loop for no benefit;
             # memory is not compressible so it gets a real ceiling.
-            memory: 1Gi
+            memory: 2Gi
 
         # SAME SIZE AND SHAPE AS BEFORE THE TEARDOWN, deliberately. The
         # Prometheus Operator derives the PVC name from the StatefulSet, so with
