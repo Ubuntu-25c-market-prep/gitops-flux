@@ -19,7 +19,22 @@ spec:
             description: "More than 5 restarts in the last 15 minutes."
 
         - alert: PodNotReady
-          expr: kube_pod_status_ready{condition="true"} == 0
+          # `unless` excludes pods that finished SUCCESSFULLY. A completed Job
+          # pod reports ready=false forever, so without this the alert fires on
+          # every successful run of every CronJob and never resolves until the
+          # pod is garbage-collected.
+          #
+          # Observed 17 Oct 2026: the hourly platform-logging `logs-ilm` job
+          # kept this alert firing continuously while succeeding every time.
+          # A warning that is always on, always wrong and hourly is worse than
+          # no warning - it teaches people to ignore the channel.
+          #
+          # Failed pods are deliberately still caught: phase=Failed is not
+          # excluded, only phase=Succeeded.
+          expr: |
+            kube_pod_status_ready{condition="true"} == 0
+              unless on(namespace, pod)
+            kube_pod_status_phase{phase="Succeeded"} == 1
           for: 10m
           labels:
             severity: warning
