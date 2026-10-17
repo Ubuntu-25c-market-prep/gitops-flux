@@ -32,7 +32,12 @@ spec:
   values:
     # Open-source build. Community Edition is licensed for companies under 100
     # employees and under $10M annual revenue - confirmed applicable. AGPL v3.
-    # See ADR 00NN.
+    #
+    # ADR 0016 (ops-program) records the full reasoning, the rejected
+    # alternatives, and two consequences that are easy to outgrow silently:
+    # the eligibility threshold above is not checked by anything, and with no
+    # identity provider there is no automatic deprovisioning - offboarding is
+    # a deliberate Teleport operation.
     enterprise: false
 
     # Placeholder name. This becomes teleport.25c-team1.art when the utils epic
