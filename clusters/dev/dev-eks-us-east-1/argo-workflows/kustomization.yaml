@@ -1,0 +1,21 @@
+# gitops-flux/clusters/dev/dev-eks-us-east-1/argo-workflows
+#
+# Under clusters/, not infrastructures/, BECAUSE IT CARRIES A SEALEDSECRET.
+# A SealedSecret in the infrastructures tree joins the auto-generated
+# aggregate build of infrastructures/dev/dev-eks-us-east-1/, and its
+# server-side dry-run against a CRD that may not be registered yet would
+# abort the ENTIRE infrastructure apply. external-dns, cert-manager and
+# aws-load-balancer-controller sit here for the same reason; argo-cd sits
+# under infrastructures/ because it has no Secret to seal.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../../../infrastructures/base/argo-workflows
+  - sealedsecret.yaml
+patches:
+  - path: patch.yaml
+    target:
+      kind: HelmRelease
+labels:
+  - pairs:
+      kustomize.toolkit.fluxcd.io/prune: enabled

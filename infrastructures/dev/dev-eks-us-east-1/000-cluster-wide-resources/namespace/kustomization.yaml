@@ -22,6 +22,7 @@ resources:
   # (ADR 0015). app-dev carries its ResourceQuota and LimitRange in the same
   # file, because they are one decision.
   - argocd.yaml
+  - argo-workflows.yaml
   - app-dev.yaml
 
   # Not yet on the cluster: declared here first, so the logging overlays can

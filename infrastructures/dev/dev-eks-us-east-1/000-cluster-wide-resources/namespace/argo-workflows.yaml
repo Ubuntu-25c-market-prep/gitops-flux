@@ -1,0 +1,21 @@
+# Argo Workflows runs here (gitops-argocd#3). Flux owns this namespace and
+# everything the chart renders into it (ADR 0015); gitops-argocd owns the
+# argoproj.io custom resources - WorkflowTemplates and CronWorkflows - that
+# appear inside it afterwards. Same split as argocd.
+#
+# Separate from `argocd` deliberately. They share a chart family and nothing
+# else: Argo CD reconciles git into the cluster continuously, Workflows runs
+# jobs that start and finish. One namespace would mean one blast radius, one
+# ResourceQuota and one RBAC surface for two unrelated failure modes.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: argo-workflows
+  labels:
+    u25c.io/workstream: argocd
+    u25c.io/owner: argocd
+    # No istio.io/rev. Workflow pods are short-lived batch jobs; an injected
+    # sidecar does not exit when the main container does, so the pod never
+    # reaches Completed and the workflow hangs. Istio's `holdApplicationUntil`
+    # /native-sidecar handling makes this workable, but it is a deliberate
+    # change to make with @istio rather than something to inherit by default.
