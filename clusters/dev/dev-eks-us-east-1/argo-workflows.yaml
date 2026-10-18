@@ -1,0 +1,38 @@
+---
+# gitops-flux/clusters/dev/dev-eks-us-east-1/argo-workflows.yaml
+#
+# Its own Flux Kustomization, like every other component under clusters/ that
+# carries a SealedSecret. See argo-workflows/kustomization.yaml for why it is
+# not in the infrastructures tree.
+#
+# dependsOn `infrastructure` because the argo-workflows NAMESPACE is created
+# there (000-cluster-wide-resources), and the health check waits on
+# sealed-secrets: without a running controller the SealedSecret never
+# decrypts, so the HelmRelease would install with no artifact repository and
+# no IRSA annotations - healthy-looking, and broken at the first artifact
+# write. Failing to apply is the better outcome.
+#
+# retryInterval is 5m, not the 1m argo-bootstrap uses. That one races a CRD
+# the HelmRelease itself installs; this has no such ordering problem, so a
+# tighter retry would only add noise.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: argo-workflows
+  namespace: flux-system
+spec:
+  interval: 20h0m0s
+  retryInterval: 5m0s
+  path: ./clusters/dev/dev-eks-us-east-1/argo-workflows
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  dependsOn:
+    - name: infrastructure
+  healthChecks:
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: sealed-secrets
+      namespace: flux-system
+  timeout: 5m0s

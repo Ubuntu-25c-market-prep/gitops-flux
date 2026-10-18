@@ -1,0 +1,112 @@
+# gitops-flux/infrastructures/base/argo-workflows/helmrelease.yaml
+#
+# Argo Workflows (gitops-argocd#3). Environment-neutral - everything that
+# names this account or this cluster lives in the overlay, and everything
+# that embeds the ACCOUNT ID lives in a SealedSecret, because this repository
+# is public.
+#
+# SCOPE: orchestration only. In-cluster scheduled and triggered jobs. This is
+# deliberately NOT a CI system - image builds stay with the GitHub Actions
+# pipeline in apps-business, which is proven and uses OIDC. The IAM granted
+# in terraform-infra-v2 is S3-only for exactly that reason; giving Workflows
+# image builds is a scope change, not a values tweak.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: argo-workflows
+  namespace: flux-system
+spec:
+  interval: 20h0m0s
+  timeout: 10m
+  chart:
+    spec:
+      chart: argo-workflows
+      version: "2.0.13" # appVersion v4.1.5
+      sourceRef:
+        kind: HelmRepository
+        name: argo
+        namespace: flux-system
+  install:
+    # The namespace comes from 000-cluster-wide-resources, like every other
+    # component here - two controllers on one object is what ADR 0015 forbids.
+    createNamespace: false
+    crds: CreateReplace
+    remediation:
+      retries: 3
+  upgrade:
+    crds: CreateReplace
+    remediation:
+      retries: 3
+  targetNamespace: argo-workflows
+  values:
+    # Workflows run in this namespace only. `singleNamespace: false` plus an
+    # explicit list is the chart's way of saying "these namespaces and no
+    # others" - the controller gets a Role/RoleBinding per listed namespace
+    # rather than a ClusterRole over everything.
+    singleNamespace: false
+
+    controller:
+      workflowNamespaces:
+        - argo-workflows
+      # The controller schedules pods and watches them. It never touches S3,
+      # which is why terraform-infra-v2 gives it no IRSA role at all.
+      resources:
+        requests:
+          cpu: 50m
+          memory: 128Mi
+        limits:
+          memory: 256Mi
+
+    workflow:
+      serviceAccount:
+        # The chart defaults this to `false` with the name already set to
+        # `argo-workflow`. It must be created, because this is the identity
+        # workflow pods run as and the one the artifact IRSA role trusts
+        # (system:serviceaccount:argo-workflows:argo-workflow).
+        create: true
+        name: "argo-workflow"
+        # annotations.eks.amazonaws.com/role-arn comes from the SealedSecret -
+        # the ARN embeds the account id.
+      rbac:
+        create: true
+
+    server:
+      enabled: true
+      serviceType: ClusterIP
+      ingress:
+        # No ingress, on purpose. The UI is reached through Teleport
+        # (ADR 0016), the same as Grafana, Argo CD and the rest.
+        enabled: false
+      serviceAccount:
+        create: true
+        name: "argo-server"
+      # `server` mode: the UI and API act as the argo-server service account
+      # and do NOT authenticate individual users. That is only acceptable
+      # because nothing can reach the Service except Teleport, which does
+      # authenticate, with MFA, and audits it. It is the same bargain Argo CD
+      # makes on this cluster - and it carries the same limitation: Workflows'
+      # own audit cannot say WHO submitted a workflow. Revisit together with
+      # Argo CD's SSO, not separately.
+      authModes:
+        - server
+      resources:
+        requests:
+          cpu: 25m
+          memory: 128Mi
+        limits:
+          memory: 256Mi
+
+    artifactRepository:
+      # Archive step logs alongside artifacts so a finished workflow's output
+      # survives its pod. Without this, logs vanish when the pod is reaped and
+      # the UI shows nothing for completed runs.
+      archiveLogs: true
+      s3:
+        region: us-east-1
+        # `bucket` comes from the SealedSecret - the bucket name ends in the
+        # account id.
+        #
+        # NO accessKeySecret / secretKeySecret. Credentials come from IRSA via
+        # the service account annotation; adding static keys here would both
+        # duplicate that and put a secret in a public repository.
+        useSDKCreds: true

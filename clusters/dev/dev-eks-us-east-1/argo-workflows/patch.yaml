@@ -1,0 +1,27 @@
+# Dev sizing and the account-specific values for dev-eks-us-east-1.
+#
+# Everything here that would name the account comes from the SealedSecret via
+# valuesFrom - see sealedsecret.yaml for why.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: argo-workflows
+  namespace: flux-system
+spec:
+  # Resolves in flux-system, which is where this HelmRelease lives.
+  # optional: false - a missing Secret should fail loudly, not silently
+  # install Workflows with no artifact repository and no IRSA annotations,
+  # which would look healthy right up until the first artifact write.
+  valuesFrom:
+    - kind: Secret
+      name: argo-workflows-irsa
+      valuesKey: values.yaml
+      optional: false
+  values:
+    controller:
+      # One replica. This is a dev cluster and the controller is not the
+      # thing whose availability matters - a workflow that does not start for
+      # a minute is not an outage.
+      replicas: 1
+    server:
+      replicas: 1
