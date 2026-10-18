@@ -159,11 +159,30 @@ spec:
         # Everyone in the org can look. Nobody can act without being granted it.
         policy.default: role:readonly
         policy.csv: |
-          # Groups come from authentik, not GitHub teams. The names below are
-          # the authentik groups themselves - `security`, `devops`, `pm`, `cto`
-          # - and they must match exactly, including case.
+          # ⚠️ THIS ENTIRE POLICY IS INERT, AND WILL STAY INERT UNTIL A
+          # CONNECTOR SUPPLIES GROUPS. Nothing below is enforced today.
           #
-          # `security` has no line on purpose. policy.default already gives
+          # The group names were authentik's. authentik ran on 25c-shared and
+          # is gone - no namespace on dev-eks-us-east-1, no auth.25c-team1.art
+          # record, and its client secret is sealed to a dead cluster's key.
+          # The names are kept rather than renamed because whichever provider
+          # arrives next will need SOME mapping, and these document the shape
+          # that was agreed. Expect to rename them when the provider is known.
+          #
+          # Why nothing is enforced: with `admin.enabled: true` and no OIDC
+          # connector, the only usable account is the built-in admin, which
+          # BYPASSES this policy entirely - `policy.default: role:readonly`
+          # included. Everyone who reaches Argo CD is a full admin.
+          #
+          # Teleport does NOT close this. It authenticates people at the door
+          # (ADR 0016) and its audit shows who OPENED Argo CD, but everyone
+          # then logs in as `admin`, so Argo CD's own audit attributes every
+          # sync and delete to `admin`. Teleport solves reachability and
+          # authentication; attribution and authorisation INSIDE Argo CD need
+          # a connector. Unlike Grafana, Argo CD cannot consume Teleport's
+          # forwarded JWT - it has no header-trust mode.
+          #
+          # `security` has no line on purpose. policy.default would give
           # everyone role:readonly, which is precisely what that group should
           # have: see every application, change none.
           g, cto, role:admin
