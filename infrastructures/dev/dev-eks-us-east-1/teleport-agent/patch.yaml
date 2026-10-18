@@ -109,6 +109,24 @@ spec:
         # would take.
         uri: "http://argocd-argo-cd-server.argocd.svc.cluster.local:80"
 
+      - name: argo-workflows
+        # DOUBLE NAME, and it is not a typo: Flux derives the Helm release
+        # name from <targetNamespace>-<name> = `argo-workflows-argo-workflows`,
+        # and the chart appends `-server`. Same mechanism that produced
+        # `argocd-argo-cd-server` and `karpenter-karpenter`.
+        #
+        # Port 2746 over PLAIN HTTP. The server runs with `--secure=false`,
+        # so Teleport terminates TLS and talks http inwards - verified from
+        # inside the cluster: http returns 200, https does not connect.
+        #
+        # Like Argo CD and unlike Grafana, this does NOT consume Teleport's
+        # JWT. It runs with `--auth-mode=server`, so the API acts as the
+        # argo-server service account and authenticates nobody. Teleport is
+        # the whole access control story here, which is why there is no
+        # ingress: anyone who reaches this Service can submit a workflow,
+        # and Workflows' own audit cannot say who.
+        uri: "http://argo-workflows-argo-workflows-server.argo-workflows.svc.cluster.local:2746"
+
       - name: alertmanager
         # Reachable, but note what it will show: this change ships the chart's
         # DEFAULT routing, which resolves to a null receiver. Alerts group and
