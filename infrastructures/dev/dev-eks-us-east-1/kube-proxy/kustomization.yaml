@@ -3,10 +3,15 @@
 # Adopts the kube-proxy EKS installed. Plain manifests, applied by
 # kustomize-controller straight to the API server - no chart to fetch, so none
 # of the helm-controller DNS dependency that made coredns difficult applies.
+#
+# Version: kube-proxy-1-35-3 (v1.35.3-eksbuild.52, EKS's default for 1.35).
+# kube-proxy must never be newer than the control plane and should match its
+# minor, so this folder moves with cluster_version in terraform-infra-v2
+# resources/us-east-1/dev/eks/config.yaml - control plane first, then here.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
-  - ../../../base/kube-proxy
+  - ../../../base/kube-proxy/kube-proxy-1-35-3
 patches:
   - path: patch.yaml
     target:
@@ -17,6 +22,16 @@ patches:
     target:
       kind: ConfigMap
       name: kube-proxy
+  # Never garbage-collect kube-proxy. This folder is applied by both the
+  # kube-proxy and infrastructure Kustomizations; pruning the DaemonSet stops
+  # Service routing on every node, DNS included. Metadata only - an
+  # annotation on the pod template would roll every pod.
+  - target:
+      name: ".*"
+    patch: |-
+      - op: add
+        path: /metadata/annotations/kustomize.toolkit.fluxcd.io~1prune
+        value: disabled
 labels:
   - pairs:
       kustomize.toolkit.fluxcd.io/prune: enabled

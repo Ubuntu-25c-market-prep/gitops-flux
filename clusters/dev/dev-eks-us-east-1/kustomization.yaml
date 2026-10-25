@@ -16,6 +16,9 @@ resources:
   - argo-bootstrap.yaml
   - argo-workflows.yaml
   - coredns.yaml
+  - aws-vpc-cni.yaml
+  - aws-ebs-csi-driver.yaml
+  - kube-proxy.yaml
 patches:
   - path: patch.yaml
   # Flux controllers stay on the on-demand system nodes.

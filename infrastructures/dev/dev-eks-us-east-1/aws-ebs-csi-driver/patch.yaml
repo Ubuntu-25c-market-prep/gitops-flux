@@ -3,6 +3,12 @@ kind: HelmRelease
 metadata:
   name: aws-ebs-csi-driver
   namespace: flux-system
+  annotations:
+    # Never garbage-collect the driver. This folder is applied by both the
+    # aws-ebs-csi-driver and infrastructure Kustomizations; pruning the
+    # HelmRelease uninstalls the driver, and no PVC can attach until it is
+    # back.
+    kustomize.toolkit.fluxcd.io/prune: disabled
 spec:
   values:
     controller:

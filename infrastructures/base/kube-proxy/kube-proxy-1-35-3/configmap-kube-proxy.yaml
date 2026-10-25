@@ -1,0 +1,14 @@
+apiVersion: v1
+data:
+  kubeconfig: "kind: Config\napiVersion: v1\nclusters:\n- cluster:\n    certificate-authority:\
+    \ /var/run/secrets/kubernetes.io/serviceaccount/ca.crt\n    server: https://5af0d8fa0a9e8adf530add9beb96a367.gr7.us-east-1.eks.amazonaws.com\n\
+    \  name: default\ncontexts:\n- context:\n    cluster: default\n    namespace:\
+    \ default\n    user: default\n  name: default\ncurrent-context: default\nusers:\n\
+    - name: default\n  user:\n    tokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token"
+kind: ConfigMap
+metadata:
+  labels:
+    eks.amazonaws.com/component: kube-proxy
+    k8s-app: kube-proxy
+  name: kube-proxy
+  namespace: kube-system
