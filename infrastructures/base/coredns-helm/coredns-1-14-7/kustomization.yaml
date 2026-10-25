@@ -1,0 +1,13 @@
+# gitops-flux/infrastructures/base/coredns-helm
+#
+# CoreDNS as a HelmRelease, for clusters that install it rather than adopt the
+# one EKS creates. base/coredns/ (plain manifests) is the other half of the
+# story and stays where it is: 25c-shared adopted a running CoreDNS on a live
+# cluster and cannot be re-pointed here without downtime it cannot afford.
+#
+# When 25c-shared is decommissioned, delete base/coredns/, rename this folder
+# to coredns, and fix the one resources: line in the overlay.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - helmrelease.yaml
