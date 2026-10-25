@@ -1,0 +1,12 @@
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: aws-ebs-csi-driver
+  namespace: flux-system
+spec:
+  interval: 10m0s
+  path: ./infrastructures/dev/dev-eks-us-east-1/aws-ebs-csi-driver
+  prune: false
+  sourceRef:
+    kind: GitRepository
+    name: flux-system

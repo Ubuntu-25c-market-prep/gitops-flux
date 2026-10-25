@@ -5,13 +5,17 @@
 # and nothing can recover it - not Flux, not kubectl. There is no break-glass
 # path the way there is for CoreDNS.
 #
-# base/aws-vpc-cni sets originalMatchLabels: true, which keeps the DaemonSet's
-# original {k8s-app: aws-node} selector. spec.selector is immutable, so without
-# it the API server rejects the update outright.
+# base/aws-vpc-cni/<version> sets originalMatchLabels: true, which keeps the
+# DaemonSet's original {k8s-app: aws-node} selector. spec.selector is
+# immutable, so without it the API server rejects the update outright.
+#
+# Version: aws-vpc-cni-1-22-4, EKS's default for Kubernetes 1.35. 1.23.x is
+# also listed as compatible but changes ipamd's gRPC listener to a unix
+# socket; take it as its own change, not as part of the 1.35 upgrade.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
-  - ../../../base/aws-vpc-cni
+  - ../../../base/aws-vpc-cni/aws-vpc-cni-1-22-4
 patches:
   - path: patch.yaml
     target:

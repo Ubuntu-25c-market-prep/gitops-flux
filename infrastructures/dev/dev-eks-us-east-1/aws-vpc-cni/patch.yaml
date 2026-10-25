@@ -1,26 +1,19 @@
-# Cluster-specific half of the CNI. base/aws-vpc-cni holds the rest.
+# Cluster-specific half of the CNI. base/aws-vpc-cni/<version> holds the rest,
+# including the chart and image pins - picking a version is picking a folder in
+# kustomization.yaml, not overriding tags here.
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: aws-vpc-cni
   namespace: flux-system
+  annotations:
+    # Never garbage-collect the CNI. This folder is applied by both the
+    # aws-vpc-cni and infrastructure Kustomizations; whichever stops listing it
+    # first would otherwise delete the HelmRelease, Helm would uninstall
+    # aws-node, and every pod on the cluster loses networking.
+    kustomize.toolkit.fluxcd.io/prune: disabled
 spec:
-  chart:
-    spec:
-      # base pins 1.22.3, which is what 25c-shared runs. This cluster shipped
-      # with 1.22.4 and the pins exist to make adoption a no-op, so they have to
-      # follow the cluster, not the library. Bumping base instead would roll the
-      # CNI on a live cluster for no reason.
-      version: "1.22.4"
   values:
-    image:
-      tag: v1.22.4-eksbuild.3
-    init:
-      image:
-        tag: v1.22.4-eksbuild.3
-    nodeAgent:
-      image:
-        tag: v1.4.0-eksbuild.1
     env:
       # Cluster-specific env EKS injected that the chart does not render.
       # Without these, adopting the DaemonSet DELETES them: the CNI loses

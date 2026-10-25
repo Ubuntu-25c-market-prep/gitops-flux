@@ -5,6 +5,12 @@ kind: HelmRelease
 metadata:
   name: coredns
   namespace: flux-system
+  annotations:
+    # Never garbage-collect CoreDNS. This folder is applied by both the
+    # coredns and infrastructure Kustomizations; pruning the HelmRelease
+    # uninstalls CoreDNS, and Flux cannot reinstall it without DNS (see the
+    # break-glass note in base/coredns-helm).
+    kustomize.toolkit.fluxcd.io/prune: disabled
 spec:
   values:
     # LOAD-BEARING. Every kubelet on this cluster is started with --cluster-dns
