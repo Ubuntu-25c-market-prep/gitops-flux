@@ -15,6 +15,7 @@ resources:
   - karpenter-nodepool.yaml
   - argo-bootstrap.yaml
   - argo-workflows.yaml
+  - coredns.yaml
 patches:
   - path: patch.yaml
   # Flux controllers stay on the on-demand system nodes.
