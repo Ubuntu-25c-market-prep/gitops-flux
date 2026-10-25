@@ -43,11 +43,6 @@ spec:
   storageNamespace: kube-system
   values:
     # EKS's build from the regional ECR, not the chart's Docker Hub default.
-    # The chart's appVersion is 1.14.7 where EKS ships 1.12.4, so taking the
-    # default would silently move CoreDNS two minor versions on install.
-    image:
-      repository: 602401143452.dkr.ecr.us-east-1.amazonaws.com/eks/coredns
-      tag: v1.12.4-eksbuild.18
 
     # The chart labels pods k8s-app: coredns. kube-dns is what the ecosystem
     # selects on - kube-prometheus-stack's CoreDNS ServiceMonitor among others.
