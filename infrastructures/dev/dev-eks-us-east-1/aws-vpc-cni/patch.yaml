@@ -14,6 +14,38 @@ metadata:
     kustomize.toolkit.fluxcd.io/prune: disabled
 spec:
   values:
+    # TURNS ON NETWORKPOLICY ENFORCEMENT. The chart default is "false", and the
+    # aws-eks-nodeagent container has been running with
+    # --enable-network-policy=false since the cluster was built.
+    #
+    # THIS IS NOT A NO-OP ON THIS CLUSTER. Eight NetworkPolicy objects already
+    # exist and have never had any effect: three in flux-system (47d, shipped
+    # by the Flux bootstrap), four in argocd (39d, from the argo-cd chart) and
+    # one on kiali. Flipping this activates all eight at once. They were read
+    # before this change landed:
+    #   - flux-system/allow-egress permits ALL egress, so Flux keeps its path
+    #     to GitHub - there is no self-locking failure here.
+    #   - flux-system ingress stays open on :8080 from any namespace, which is
+    #     the Prometheus scrape path.
+    #   - argocd-server is `ingress: [{}]`, wide open. redis and repo-server
+    #     accept only their siblings.
+    #   - the kiali policy restricts ports, not callers, so it is not a control.
+    #
+    # The one thing to watch is kubelet probes: every pod those policies select
+    # has liveness and readiness probes, and none of the policies name the node
+    # as a source. Node-to-pod traffic is meant to be exempt; it was genuinely
+    # broken in aws-network-policy-agent and fixed in v1.0.7/v1.0.8
+    # (aws/aws-network-policy-agent#139, aws/amazon-vpc-cni-k8s#2571). This
+    # cluster runs v1.4.0-eksbuild.1, well past both. Verified by watching
+    # flux-system and argocd for restarts after the reconcile - see the PR.
+    #
+    # Break-glass, if pods start failing probes (faster than a revert, because
+    # a restarting source-controller cannot reconcile the revert):
+    #   kubectl -n kube-system set env ds/aws-node ENABLE_NETWORK_POLICY=false
+    #
+    # Prerequisite P0 for gitops-flux zero trust (platform-security#9).
+    enableNetworkPolicy: "true"
+
     env:
       # Cluster-specific env EKS injected that the chart does not render.
       # Without these, adopting the DaemonSet DELETES them: the CNI loses
