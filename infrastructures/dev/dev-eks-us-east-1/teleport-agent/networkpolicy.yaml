@@ -1,0 +1,50 @@
+# gitops-flux/infrastructures/dev/dev-eks-us-east-1/teleport-agent/networkpolicy.yaml
+#
+# First deliberate NetworkPolicy on this cluster (platform-security#9).
+# Everything that existed before was a Helm chart default nobody had chosen -
+# and until the CNI's enableNetworkPolicy was turned on, none of them enforced
+# anything at all.
+#
+# WHY THIS NAMESPACE FIRST
+#
+# teleport-agent is the safest real target on the cluster:
+#   - It has no Service and no endpoints. Nothing addresses it.
+#   - Its one workload opens a REVERSE TUNNEL - it dials OUT to the proxy and
+#     keeps that connection. NetworkPolicy is stateful, so replies on a
+#     connection the pod itself opened are allowed regardless of ingress rules.
+#   - It is also worth protecting: the pod holds the agent's join identity.
+#
+# So the correct ingress rule for this namespace is: none at all.
+#
+# KUBELET PROBES
+#
+# teleport-agent-0 has liveness and readiness probes on its `diag` port, and
+# this policy names no source that covers the node. Node-to-pod traffic is
+# meant to be exempt from enforcement; it was genuinely broken in
+# aws-network-policy-agent and fixed in v1.0.7/v1.0.8
+# (aws/aws-network-policy-agent#139, aws/amazon-vpc-cni-k8s#2571). This
+# cluster runs v1.4.0-eksbuild.1.
+#
+# That is the upstream claim. What makes it safe to rely on HERE is that the
+# same question was already answered on this cluster: enabling enforcement
+# activated eight dormant policies across flux-system and argocd, every one of
+# those pods has probes, and none of them restarted. Verified, not assumed.
+#
+# NO EGRESS RULES, DELIBERATELY
+#
+# policyTypes lists Ingress only. A default-deny egress policy without an
+# explicit allow to kube-dns on UDP+TCP 53 breaks name resolution for the
+# whole namespace, and the agent resolves the proxy by name. Egress comes
+# later, as its own change, with the DNS rule written first.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: teleport-agent
+spec:
+  # Empty selector = every pod in the namespace.
+  podSelector: {}
+  # Ingress listed with no `ingress:` block below = deny all inbound.
+  # Omitting Egress leaves outbound untouched.
+  policyTypes:
+    - Ingress
