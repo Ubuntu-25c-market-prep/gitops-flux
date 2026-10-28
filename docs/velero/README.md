@@ -116,7 +116,7 @@ Open a pull request. Once it merges, Flux picks it up on its next sync.
 flux get helmreleases -n flux-system velero
 kubectl -n velero get pods
 velero backup-location get          # PHASE must be Available
-velero schedule get                 # daily, 0 3 * * *
+velero schedule get                 # velero-daily, 0 3 * * *
 ```
 
 Then prove a restore works. Restore into a copy, never over the original:
@@ -133,6 +133,93 @@ velero backup delete test-1 --confirm
 
 A backup you have never restored is not a backup.
 
+## Why Velero
+
+Git and Flux rebuild what the cluster should run, but not what it holds:
+
+- **Volume data.** Anything on an EBS-backed PVC, like Prometheus data, is not in Git.
+- **Objects not in Git.** Anything created by hand or by a controller is gone if its
+  namespace is deleted.
+- **Mistakes.** A deleted namespace or a broken upgrade can be put back to last night's
+  state.
+- **Moving a cluster.** A backup can be restored into a new cluster.
+
+## Connecting to the cluster
+
+The API endpoint of `dev-eks-us-east-1` is private, and `dev-bastion` has no kubectl.
+Tunnel the API port through the bastion (over SSM) to your laptop. `AWS_PROFILE=dev` is
+required: the SSH ProxyCommand finds the bastion with whatever profile is active.
+
+```
+aws sso login --profile dev
+EP=$(aws eks describe-cluster --name dev-eks-us-east-1 --profile dev \
+  --query cluster.endpoint --output text | sed 's#https://##')
+AWS_PROFILE=dev ssh -fN -L 8443:$EP:443 dev-bastion
+```
+
+Then point a kubeconfig at the tunnel. Once is enough:
+
+```
+export KUBECONFIG=~/.kube/dev-tunnel
+aws eks update-kubeconfig --name dev-eks-us-east-1 --profile dev --alias dev-tunnel
+kubectl config set-cluster "$(kubectl config view --minify -o jsonpath='{.clusters[0].name}')" \
+  --server=https://127.0.0.1:8443 --tls-server-name=$EP
+kubectl get nodes
+```
+
+Close the tunnel with `pkill -f 'L 8443'`.
+
+## Day-to-day use
+
+### Health check
+
+| Command | Healthy result |
+|---|---|
+| `flux get helmreleases -n flux-system velero` | Ready, chart velero@12.2.0 |
+| `kubectl -n velero get pods` | `velero-...` 1/1 Running |
+| `velero backup-location get` | `default` is Available |
+| `velero schedule get` | `velero-daily`, `0 3 * * *`, Enabled |
+| `velero backup get` | one Completed backup per day |
+| `velero backup describe <name> --details` | volume snapshots attempted equals completed |
+
+### Back up on demand
+
+Before anything risky: an upgrade, deleting a namespace, a big Helm change.
+
+```
+velero backup create pre-upgrade-$(date +%F) --include-namespaces monitoring --snapshot-volumes --wait
+velero backup create pre-upgrade-$(date +%F) --snapshot-volumes --wait   # whole cluster
+```
+
+### Restore
+
+Velero never overwrites objects that already exist: delete what you want replaced, or
+restore into a copy. Suspend the Flux Kustomization that owns the objects first, so it
+doesn't fight the restore.
+
+```
+flux suspend kustomization <name>
+
+# into a copy (safest)
+velero restore create --from-backup <backup> \
+  --include-namespaces argocd --namespace-mappings argocd:argocd-restore --wait
+
+# one namespace in place (delete the namespace first)
+velero restore create --from-backup <backup> --include-namespaces argocd --wait
+
+# everything in the backup
+velero restore create --from-backup <backup> --wait
+
+velero restore describe <restore-name> --details
+flux resume kustomization <name>
+```
+
+### Changing the schedule or retention
+
+Edit `schedules.daily` in `clusters/dev/dev-eks-us-east-1/velero/patch.yaml` and open a
+pull request. Flux reverts changes made with kubectl. Keep `ttl` below `expiration_days`
+(90) on the velero bucket in `terraform-infra-v2`, or S3 deletes backups Velero still lists.
+
 ## Troubleshooting
 
 **`velero backup-location get` shows `Unavailable`.** Velero can't reach the bucket. Run
@@ -142,6 +229,8 @@ account has the `eks.amazonaws.com/role-arn` annotation
 
 **A backup is `PartiallyFailed`.** `velero backup logs <name> | grep -i error`. A failed
 EBS snapshot is usually a missing EC2 permission in `dev-VeleroPolicy-us-east-1`.
+`UnauthorizedOperation` on `ec2:CreateTags` means the snapshot ARNs in that policy carry
+an account id. Snapshot ARNs have an empty account field: `arn:aws:ec2:us-east-1::snapshot/*`.
 
 **A restored PVC stays `Pending`.** EBS snapshots restore into the same availability zone
 the original volume was in. The pod needs a node in that zone.
